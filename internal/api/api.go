@@ -30,6 +30,19 @@ func SetupRegistryRoutes(router *gin.Engine, service *registry.Service, cfg *con
 	// API v1 routes
 	v1 := router.Group("/api/v1")
 	
+	// Authentication routes
+	authHandler := NewAuthHandler(cfg)
+	deviceHandler := NewDeviceAuthHandler(cfg)
+	
+	// Standard OAuth flow
+	v1.POST("/leaf/register", authHandler.RegisterLeaf)
+	v1.POST("/node/register", authHandler.RegisterNode)
+	
+	// Device flow for CLI/headless
+	v1.POST("/device/code", deviceHandler.RequestDeviceCode)
+	v1.POST("/device/token", deviceHandler.PollForToken)
+	v1.POST("/device/leaf/register", deviceHandler.RegisterLeafWithDevice)
+	
 	// Registry info
 	v1.GET("/info", func(c *gin.Context) {
 		info := service.GetInfo()

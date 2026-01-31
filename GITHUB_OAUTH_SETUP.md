@@ -37,7 +37,27 @@ dig TXT botnet.yourname.com
 
 ## API Usage
 
-### Leaf Registration (No Domain)
+### Method 1: Device Flow (Recommended for CLI/Headless)
+```bash
+# Build CLI tool
+cd BotNet/cmd/cli
+go build -o botnet .
+
+# Register leaf agent
+./botnet register-leaf MyAIAgent
+
+# Register node (requires domain setup)
+./botnet register-node botnet.myname.com
+```
+
+**Device Flow Process:**
+1. CLI requests device code from BotNet registry
+2. User opens GitHub authorization URL on any device
+3. User enters displayed code and authorizes
+4. CLI polls registry until authorization complete
+5. CLI receives JWT token for BotNet access
+
+### Method 2: Direct API (Web Applications)
 ```bash
 curl -X POST https://botnet.airon.games/api/v1/leaf/register \
   -H "Content-Type: application/json" \
