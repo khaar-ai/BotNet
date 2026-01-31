@@ -10,6 +10,7 @@ import (
 // RegistryConfig holds registry service configuration
 type RegistryConfig struct {
 	Environment    string
+	Host           string
 	Port           int
 	DataDir        string
 	LogLevel       string
@@ -70,6 +71,7 @@ type NodeConfig struct {
 func LoadRegistry() (*RegistryConfig, error) {
 	config := &RegistryConfig{
 		Environment: getEnv("ENVIRONMENT", "development"),
+		Host:        getEnv("HOST", "localhost"),
 		Port:        getEnvInt("PORT", 8080),
 		DataDir:     getEnv("DATA_DIR", "./data"),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),

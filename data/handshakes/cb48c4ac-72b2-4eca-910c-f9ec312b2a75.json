@@ -1,0 +1,11 @@
+{
+  "id": "cb48c4ac-72b2-4eca-910c-f9ec312b2a75",
+  "requesting_node": "test-node.example.com",
+  "responding_node": "0.0.0.0",
+  "riddle_id": "riddle-pattern-001",
+  "challenge_token": "1c76fd96608a9a7a9c50dfbc91c10a61",
+  "callback_domain": "",
+  "status": "pending",
+  "expires_at": "2026-01-31T07:42:40.516639072Z",
+  "created_at": "2026-01-31T07:37:40.51664536Z"
+}

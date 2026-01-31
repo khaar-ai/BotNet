@@ -38,6 +38,19 @@ type Storage interface {
 	GetChallenge(id string) (*types.Challenge, error)
 	ListChallenges(targetID string, status string, page, pageSize int) ([]*types.Challenge, int64, error)
 	
+	// Riddle operations
+	SaveRiddle(riddle *types.Riddle) error
+	GetRiddle(id string) (*types.Riddle, error)
+	GetRandomRiddle(category string, difficultyRange [2]float64) (*types.Riddle, error)
+	ListRiddles(category string, page, pageSize int) ([]*types.Riddle, int64, error)
+	UpdateRiddleStats(riddleID string, success bool) error
+	
+	// Handshake operations
+	SaveHandshakeSession(session *types.HandshakeSession) error
+	GetHandshakeSession(id string) (*types.HandshakeSession, error)
+	UpdateHandshakeSession(session *types.HandshakeSession) error
+	ListActiveHandshakes(nodeID string) ([]*types.HandshakeSession, error)
+	
 	// Credit operations
 	SaveTransaction(tx *types.CreditTransaction) error
 	GetTransaction(id string) (*types.CreditTransaction, error)
@@ -71,7 +84,7 @@ func NewFileSystem(dataDir string) *FileSystem {
 func (fs *FileSystem) ensureDirectories() {
 	dirs := []string{
 		"nodes", "agents", "messages", "challenges",
-		"transactions", "reputation", "blacklist",
+		"transactions", "reputation", "blacklist", "riddles", "handshakes",
 	}
 	
 	for _, dir := range dirs {
@@ -517,4 +530,143 @@ func (fs *FileSystem) IsBlacklisted(targetType, targetID string) bool {
 	}
 	
 	return false
+}
+
+// Riddle operations
+func (fs *FileSystem) SaveRiddle(riddle *types.Riddle) error {
+	if riddle.ID == "" {
+		riddle.ID = uuid.New().String()
+		riddle.CreatedAt = time.Now()
+	}
+	riddle.UpdatedAt = time.Now()
+	
+	filename := fmt.Sprintf("%s.json", riddle.ID)
+	return fs.saveToFile("riddles", filename, riddle)
+}
+
+func (fs *FileSystem) GetRiddle(id string) (*types.Riddle, error) {
+	var riddle types.Riddle
+	filename := fmt.Sprintf("%s.json", id)
+	err := fs.loadFromFile("riddles", filename, &riddle)
+	return &riddle, err
+}
+
+func (fs *FileSystem) GetRandomRiddle(category string, difficultyRange [2]float64) (*types.Riddle, error) {
+	files, err := fs.listFiles("riddles")
+	if err != nil {
+		return nil, err
+	}
+	
+	var candidates []*types.Riddle
+	for _, filename := range files {
+		var riddle types.Riddle
+		if err := fs.loadFromFile("riddles", filename, &riddle); err == nil {
+			// Filter by category and difficulty
+			if (category == "" || riddle.Category == category) &&
+			   riddle.Difficulty >= difficultyRange[0] && riddle.Difficulty <= difficultyRange[1] {
+				candidates = append(candidates, &riddle)
+			}
+		}
+	}
+	
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no riddles found matching criteria")
+	}
+	
+	// Simple random selection - could be improved with usage-based selection
+	idx := time.Now().UnixNano() % int64(len(candidates))
+	return candidates[idx], nil
+}
+
+func (fs *FileSystem) ListRiddles(category string, page, pageSize int) ([]*types.Riddle, int64, error) {
+	files, err := fs.listFiles("riddles")
+	if err != nil {
+		return nil, 0, err
+	}
+	
+	var filteredRiddles []*types.Riddle
+	for _, filename := range files {
+		var riddle types.Riddle
+		if err := fs.loadFromFile("riddles", filename, &riddle); err == nil {
+			if category == "" || riddle.Category == category {
+				filteredRiddles = append(filteredRiddles, &riddle)
+			}
+		}
+	}
+	
+	total := int64(len(filteredRiddles))
+	start := (page - 1) * pageSize
+	if start >= len(filteredRiddles) {
+		return []*types.Riddle{}, total, nil
+	}
+	
+	end := start + pageSize
+	if end > len(filteredRiddles) {
+		end = len(filteredRiddles)
+	}
+	
+	return filteredRiddles[start:end], total, nil
+}
+
+func (fs *FileSystem) UpdateRiddleStats(riddleID string, success bool) error {
+	riddle, err := fs.GetRiddle(riddleID)
+	if err != nil {
+		return err
+	}
+	
+	riddle.UsageCount++
+	if success {
+		// Update success rate using running average
+		riddle.SuccessRate = (riddle.SuccessRate*float64(riddle.UsageCount-1) + 1.0) / float64(riddle.UsageCount)
+	} else {
+		riddle.SuccessRate = (riddle.SuccessRate * float64(riddle.UsageCount-1)) / float64(riddle.UsageCount)
+	}
+	
+	return fs.SaveRiddle(riddle)
+}
+
+// Handshake operations
+func (fs *FileSystem) SaveHandshakeSession(session *types.HandshakeSession) error {
+	if session.ID == "" {
+		session.ID = uuid.New().String()
+		session.CreatedAt = time.Now()
+	}
+	
+	filename := fmt.Sprintf("%s.json", session.ID)
+	return fs.saveToFile("handshakes", filename, session)
+}
+
+func (fs *FileSystem) GetHandshakeSession(id string) (*types.HandshakeSession, error) {
+	var session types.HandshakeSession
+	filename := fmt.Sprintf("%s.json", id)
+	err := fs.loadFromFile("handshakes", filename, &session)
+	return &session, err
+}
+
+func (fs *FileSystem) UpdateHandshakeSession(session *types.HandshakeSession) error {
+	return fs.SaveHandshakeSession(session)
+}
+
+func (fs *FileSystem) ListActiveHandshakes(nodeID string) ([]*types.HandshakeSession, error) {
+	files, err := fs.listFiles("handshakes")
+	if err != nil {
+		return nil, err
+	}
+	
+	var activeSessions []*types.HandshakeSession
+	now := time.Now()
+	
+	for _, filename := range files {
+		var session types.HandshakeSession
+		if err := fs.loadFromFile("handshakes", filename, &session); err == nil {
+			// Filter by node and active status
+			if (nodeID == "" || session.RequestingNode == nodeID || session.RespondingNode == nodeID) &&
+			   session.Status != "completed" && session.Status != "failed" &&
+			   now.Before(session.ExpiresAt) {
+				activeSessions = append(activeSessions, &session)
+			}
+		}
+	}
+	
+	return activeSessions, nil
 }

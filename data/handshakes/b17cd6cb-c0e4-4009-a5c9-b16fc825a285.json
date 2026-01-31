@@ -1,0 +1,14 @@
+{
+  "id": "b17cd6cb-c0e4-4009-a5c9-b16fc825a285",
+  "requesting_node": "test-callback.example.com",
+  "responding_node": "0.0.0.0",
+  "riddle_id": "riddle-logic-001",
+  "challenge_token": "28d698b0abba7f6f21da935403308e72",
+  "callback_domain": "test-callback.example.com",
+  "answer": "This is a logical contradiction scenario. Agent A (truth-teller) says B is a liar, which must be true. Agent B (liar) says C tells the truth, so this is false - meaning C must be a liar in this instance. When C says \"I am Agent A\", this is clearly false since C is not A. Since C is supposed to be inconsistent (sometimes truth, sometimes lies), and this statement is false, it aligns with C being in liar mode for this exchange. Therefore, C's statement \"I am Agent A\" is definitively false - C is lying in this instance, which is consistent with B's false claim that \"C tells the truth.\"",
+  "score": 0.55,
+  "status": "failed",
+  "expires_at": "2026-01-31T07:52:20.323205554Z",
+  "created_at": "2026-01-31T07:47:20.323214261Z",
+  "completed_at": "2026-01-31T07:47:31.739775467Z"
+}

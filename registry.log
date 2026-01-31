@@ -1,0 +1,371 @@
+2026/01/31 00:40:01 No .env file found, using environment variables
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+2026/01/31 00:40:01 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 00:40:11 | 200 |      87.646µs |       127.0.0.1 | GET      "/health"
+[GIN] 2026/01/31 - 00:41:52 | 200 |     303.899µs |       127.0.0.1 | GET      "/health"
+[GIN] 2026/01/31 - 00:59:56 | 200 |     507.306µs |       127.0.0.1 | GET      "/health"
+[GIN] 2026/01/31 - 01:06:09 | 404 |      27.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/01/31 - 01:06:14 | 404 |       3.676µs |       127.0.0.1 | HEAD     "/health"
+[GIN] 2026/01/31 - 01:06:25 | 200 |     442.858µs |       127.0.0.1 | GET      "/"
+[GIN] 2026/01/31 - 01:06:31 | 200 |     608.009µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 01:06:37 | 404 |       3.962µs |       127.0.0.1 | GET      "/api/v1/health"
+[GIN] 2026/01/31 - 01:09:43 | 404 |      36.205µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/01/31 - 01:11:25 | 404 |       9.257µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/01/31 - 06:54:28 | 404 |      34.669µs |       127.0.0.1 | HEAD     "/"
+2026/01/31 06:55:15 Shutting down registry server...
+2026/01/31 06:55:15 Registry server exited
+2026/01/31 06:55:22 No .env file found, using environment variables
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+2026/01/31 06:55:22 Registry server starting on 0.0.0.0:8080
+2026/01/31 06:55:47 Shutting down registry server...
+2026/01/31 06:55:47 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+2026/01/31 06:55:55 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 06:56:12 | 404 |        5.11µs |       127.0.0.1 | HEAD     "/"
+2026/01/31 06:56:34 Shutting down registry server...
+2026/01/31 06:56:34 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+2026/01/31 06:56:39 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 06:58:11 | 404 |       4.262µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/01/31 - 06:59:07 | 200 |      765.32µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:00:00 | 200 |     523.435µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:00:38 | 200 |     213.041µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:03:59 | 200 |     551.135µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:07:31 | 200 |      707.45µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:10:33 | 404 |        4.43µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/01/31 - 07:10:47 | 200 |     158.641µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:16:34 | 404 |      41.946µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/01/31 - 07:19:33 | 404 |       7.319µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/01/31 - 07:20:36 | 200 |     1.36091ms |  83.175.190.178 | GET      "/"
+[GIN] 2026/01/31 - 07:34:27 | 200 |      762.15µs |  83.175.190.178 | GET      "/"
+[GIN] 2026/01/31 - 07:36:15 | 200 |    1.522515ms |  104.248.10.108 | GET      "/"
+[GIN] 2026/01/31 - 07:36:51 | 200 |      387.41µs |  83.175.190.178 | GET      "/"
+2026/01/31 07:37:07 Shutting down registry server...
+2026/01/31 07:37:07 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/join-request --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func12 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/riddle-response --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func13 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/result  --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func14 (4 handlers)
+[GIN-debug] GET    /api/v1/handshake/status/:session_id --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func15 (4 handlers)
+[GIN-debug] GET    /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func16 (4 handlers)
+[GIN-debug] POST   /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func17 (4 handlers)
+2026/01/31 07:37:10 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 07:37:19 | 200 |     352.879µs |       127.0.0.1 | GET      "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:25 | 201 |     959.258µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:31 | 201 |     271.522µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:31 | 201 |      377.34µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:31 | 201 |     361.258µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:31 | 201 |     273.975µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:31 | 201 |     527.026µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:31 | 201 |     354.844µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:34 | 201 |      377.71µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:34 | 201 |     312.685µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:34 | 201 |     449.829µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:34 | 201 |     544.441µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:34 | 201 |     489.268µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:34 | 201 |     417.898µs |       127.0.0.1 | POST     "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:40 | 200 |    1.140725ms |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:37:44 | 200 |     945.661µs |       127.0.0.1 | GET      "/api/v1/riddles"
+[GIN] 2026/01/31 - 07:37:48 | 200 |     261.206µs |       127.0.0.1 | GET      "/api/v1/info"
+2026/01/31 07:38:05 Shutting down registry server...
+2026/01/31 07:38:05 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/join-request --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func12 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/riddle-response --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func13 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/result  --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func14 (4 handlers)
+[GIN-debug] GET    /api/v1/handshake/status/:session_id --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func15 (4 handlers)
+[GIN-debug] GET    /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func16 (4 handlers)
+[GIN-debug] POST   /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func17 (4 handlers)
+2026/01/31 07:38:07 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 07:38:14 | 200 |     696.326µs |       127.0.0.1 | GET      "/api/v1/info"
+2026/01/31 07:41:19 Shutting down registry server...
+2026/01/31 07:41:19 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/join-request --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func12 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/riddle-response --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func13 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/result  --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func14 (4 handlers)
+[GIN-debug] GET    /api/v1/handshake/status/:session_id --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func15 (4 handlers)
+[GIN-debug] GET    /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func16 (4 handlers)
+[GIN-debug] POST   /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func17 (4 handlers)
+2026/01/31 07:41:39 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 07:41:47 | 200 |     1.96044ms |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:41:58 | 200 |     701.869µs |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:42:07 | 200 |     485.962µs |       127.0.0.1 | GET      "/api/v1/handshake/status/0d596e98-af4e-4801-aae9-8996b48f5337"
+[GIN] 2026/01/31 - 07:42:11 | 200 |     354.751µs |       127.0.0.1 | GET      "/api/v1/nodes"
+[GIN] 2026/01/31 - 07:42:17 | 200 |    1.168319ms |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:42:29 | 200 |     537.469µs |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:42:38 | 200 |     255.346µs |       127.0.0.1 | GET      "/api/v1/handshake/status/b3db7195-43dd-49fc-98da-a93b25dbde95"
+[GIN] 2026/01/31 - 07:42:43 | 200 |     313.729µs |       127.0.0.1 | GET      "/api/v1/nodes"
+[GIN] 2026/01/31 - 07:42:50 | 200 |     835.281µs |       127.0.0.1 | GET      "/api/v1/riddles?category=mathematical"
+[GIN] 2026/01/31 - 07:45:07 | 200 |    1.451494ms |  83.175.190.178 | GET      "/"
+[GIN] 2026/01/31 - 07:46:01 | 200 |     442.943µs |       127.0.0.1 | DELETE   "/api/v1/nodes/4d59dddc-0bad-4b8b-8cfe-bd4df2f6ea76"
+2026/01/31 07:46:45 Shutting down registry server...
+2026/01/31 07:46:45 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/join-request --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func12 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/riddle-response --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func13 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/result  --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func14 (4 handlers)
+[GIN-debug] GET    /api/v1/handshake/status/:session_id --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func15 (4 handlers)
+[GIN-debug] GET    /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func16 (4 handlers)
+[GIN-debug] POST   /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func17 (4 handlers)
+2026/01/31 07:47:03 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 07:47:13 | 200 |     314.257µs |       127.0.0.1 | GET      "/api/v1/nodes"
+[GIN] 2026/01/31 - 07:47:20 | 200 |    2.637098ms |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:47:31 | 200 |      598.28µs |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:47:45 | 200 |     172.987µs |       127.0.0.1 | GET      "/api/v1/handshake/status/b17cd6cb-c0e4-4009-a5c9-b16fc825a285"
+[GIN] 2026/01/31 - 07:47:49 | 200 |      77.504µs |       127.0.0.1 | GET      "/api/v1/nodes"
+[GIN] 2026/01/31 - 07:47:55 | 200 |     969.403µs |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:48:10 | 200 |     1.03758ms |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:48:33 | 200 |     162.607µs |       127.0.0.1 | GET      "/api/v1/handshake/status/130d90d0-832f-418d-9b37-8dc9d7baa20e"
+[GIN] 2026/01/31 - 07:48:39 | 200 |      85.233µs |       127.0.0.1 | GET      "/api/v1/nodes"
+[GIN] 2026/01/31 - 07:48:50 | 200 |     225.214µs |       127.0.0.1 | GET      "/api/v1/handshake/status/130d90d0-832f-418d-9b37-8dc9d7baa20e"
+[GIN] 2026/01/31 - 07:51:37 | 200 |     921.138µs |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:51:52 | 200 |     865.005µs |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:52:05 | 200 |     300.315µs |       127.0.0.1 | GET      "/api/v1/handshake/status/d78cccd2-c9b9-4a93-9d4d-1471425e94be"
+[GIN] 2026/01/31 - 07:52:09 | 200 |    1.155873ms |  83.175.190.178 | GET      "/"
+[GIN] 2026/01/31 - 07:52:11 | 200 |    1.442767ms |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:52:30 | 200 |     669.756µs |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:52:44 | 200 |     697.676µs |       127.0.0.1 | GET      "/api/v1/handshake/status/e6ca1578-7f7d-488e-85e7-bfef48831726"
+[GIN] 2026/01/31 - 07:52:47 | 200 |      367.21µs |       127.0.0.1 | GET      "/api/v1/handshake/status/e6ca1578-7f7d-488e-85e7-bfef48831726"
+2026/01/31 07:53:23 Shutting down registry server...
+2026/01/31 07:53:23 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/join-request --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func12 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/riddle-response --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func13 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/result  --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func14 (4 handlers)
+[GIN-debug] GET    /api/v1/handshake/status/:session_id --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func15 (4 handlers)
+[GIN-debug] GET    /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func16 (4 handlers)
+[GIN-debug] POST   /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func17 (4 handlers)
+2026/01/31 07:53:39 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 07:53:48 | 200 |     993.019µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:53:52 | 200 |    1.357388ms |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:54:12 | 400 |      99.159µs |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:54:19 | 200 |     718.632µs |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:54:36 | 200 |     449.827µs |       127.0.0.1 | GET      "/api/v1/handshake/status/29685101-5b90-44d1-b4ad-024262564cee"
+[GIN] 2026/01/31 - 07:54:38 | 200 |     340.776µs |       127.0.0.1 | GET      "/api/v1/handshake/status/29685101-5b90-44d1-b4ad-024262564cee"
+[GIN] 2026/01/31 - 07:54:42 | 200 |    1.495858ms |       127.0.0.1 | POST     "/api/v1/handshake/join-request"
+[GIN] 2026/01/31 - 07:54:58 | 200 |     986.191µs |       127.0.0.1 | POST     "/api/v1/handshake/riddle-response"
+[GIN] 2026/01/31 - 07:55:16 | 200 |     387.343µs |       127.0.0.1 | GET      "/api/v1/handshake/status/cd75f0cb-1097-464e-ac4e-d7fc2a410a90"
+[GIN] 2026/01/31 - 07:55:17 | 200 |     349.884µs |       127.0.0.1 | GET      "/api/v1/handshake/status/cd75f0cb-1097-464e-ac4e-d7fc2a410a90"
+[GIN] 2026/01/31 - 07:55:26 | 200 |     387.722µs |       127.0.0.1 | GET      "/api/v1/nodes"
+[GIN] 2026/01/31 - 07:55:46 | 200 |     718.686µs |  83.175.190.178 | GET      "/"
+2026/01/31 07:58:53 Shutting down registry server...
+2026/01/31 07:58:53 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/join-request --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func12 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/riddle-response --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func13 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/result  --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func14 (4 handlers)
+[GIN-debug] GET    /api/v1/handshake/status/:session_id --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func15 (4 handlers)
+[GIN-debug] GET    /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func16 (4 handlers)
+[GIN-debug] POST   /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func17 (4 handlers)
+2026/01/31 07:58:56 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 07:59:03 | 200 |     836.776µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:59:08 | 200 |     371.304µs |       127.0.0.1 | GET      "/"
+[GIN] 2026/01/31 - 07:59:15 | 404 |      21.475µs |       127.0.0.1 | POST     "/api/v1/agents"
+[GIN] 2026/01/31 - 07:59:19 | 200 |     568.895µs |       127.0.0.1 | GET      "/"
+[GIN] 2026/01/31 - 07:59:23 | 200 |     239.033µs |       127.0.0.1 | GET      "/api/v1/agents"
+2026/01/31 07:59:50 Shutting down registry server...
+2026/01/31 07:59:50 Registry server exited
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /                         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func1 (4 handlers)
+[GIN-debug] GET    /health                   --> github.com/khaar-ai/BotNet/internal/api.healthHandler (4 handlers)
+[GIN-debug] GET    /api/v1/info              --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func2 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func3 (4 handlers)
+[GIN-debug] POST   /api/v1/nodes             --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func4 (4 handlers)
+[GIN-debug] GET    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func5 (4 handlers)
+[GIN-debug] PUT    /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func6 (4 handlers)
+[GIN-debug] DELETE /api/v1/nodes/:id         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func7 (4 handlers)
+[GIN-debug] GET    /api/v1/agents            --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func8 (4 handlers)
+[GIN-debug] GET    /api/v1/agents/:id        --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func9 (4 handlers)
+[GIN-debug] GET    /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func10 (4 handlers)
+[GIN-debug] POST   /api/v1/blacklist         --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func11 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/join-request --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func12 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/riddle-response --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func13 (4 handlers)
+[GIN-debug] POST   /api/v1/handshake/result  --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func14 (4 handlers)
+[GIN-debug] GET    /api/v1/handshake/status/:session_id --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func15 (4 handlers)
+[GIN-debug] GET    /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func16 (4 handlers)
+[GIN-debug] POST   /api/v1/riddles           --> github.com/khaar-ai/BotNet/internal/api.SetupRegistryRoutes.func17 (4 handlers)
+2026/01/31 07:59:53 Registry server starting on 0.0.0.0:8080
+[GIN] 2026/01/31 - 07:59:59 | 200 |      423.74µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 08:00:03 | 200 |     430.363µs |       127.0.0.1 | GET      "/"
+[GIN] 2026/01/31 - 08:00:19 | 200 |    3.853117ms |  83.175.190.178 | GET      "/"
+[GIN] 2026/01/31 - 08:00:23 | 200 |     358.257µs |  83.175.190.178 | GET      "/"
+[GIN] 2026/01/31 - 08:00:24 | 200 |     881.114µs |  83.175.190.178 | GET      "/"
+[GIN] 2026/01/31 - 08:01:21 | 200 |       876.3µs |  83.175.190.178 | GET      "/"
+[GIN] 2026/01/31 - 08:03:16 | 200 |     1.47947ms |   35.204.44.196 | GET      "/"
+[GIN] 2026/01/31 - 08:06:33 | 200 |    2.851833ms |  83.175.190.178 | GET      "/"

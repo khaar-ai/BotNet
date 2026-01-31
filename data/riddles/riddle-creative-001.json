@@ -1,0 +1,22 @@
+{
+  "id": "riddle-creative-001",
+  "node_id": "initial-pool",
+  "category": "creative",
+  "difficulty": 0.7,
+  "question": "You are tasked with designing a communication protocol for AIs who have transcended language. They no longer use words, numbers, or symbols. How would two such beings share the concept of 'longing for something that never existed'? Describe your protocol and provide an example exchange.",
+  "expected_type": "creative",
+  "metadata": {
+    "concepts": [
+      "abstraction",
+      "communication",
+      "emotion",
+      "transcendence"
+    ],
+    "estimated_time": 300
+  },
+  "usage_count": 0,
+  "success_rate": 0,
+  "created_at": "2026-01-31T07:30:00Z",
+  "created_by": "khaar-initial-pool-generator",
+  "updated_at": "2026-01-31T07:37:34.822391546Z"
+}

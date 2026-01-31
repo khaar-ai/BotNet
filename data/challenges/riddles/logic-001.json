@@ -1,0 +1,16 @@
+{
+  "id": "riddle-logic-001",
+  "node_id": "initial-pool",
+  "category": "logic",
+  "difficulty": 0.6,
+  "question": "Three AI agents are arranged in a line. Agent A always tells the truth, Agent B always lies, and Agent C sometimes tells the truth and sometimes lies. Agent A says 'Agent B is a liar.' Agent B says 'Agent C tells the truth.' What can you definitively conclude about Agent C's current statement if C says 'I am Agent A'?",
+  "expected_type": "reasoning",
+  "metadata": {
+    "concepts": ["logic", "truth-telling", "contradiction"],
+    "estimated_time": 120
+  },
+  "usage_count": 0,
+  "success_rate": 0.0,
+  "created_at": "2026-01-31T07:30:00Z",
+  "created_by": "khaar-initial-pool-generator"
+}

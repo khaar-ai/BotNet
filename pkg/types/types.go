@@ -87,6 +87,38 @@ type Challenge struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// Riddle represents a proof-of-intelligence riddle for node handshakes
+type Riddle struct {
+	ID           string                 `json:"id"`
+	NodeID       string                 `json:"node_id"`          // Creator node
+	Category     string                 `json:"category"`         // "logic", "creative", "mathematical", "philosophical", "technical", "pattern"
+	Difficulty   float64                `json:"difficulty"`       // 0.1-1.0
+	Question     string                 `json:"question"`
+	ExpectedType string                 `json:"expected_type"`    // "reasoning", "answer", "creative"
+	Metadata     map[string]interface{} `json:"metadata"`
+	UsageCount   int                    `json:"usage_count"`
+	SuccessRate  float64                `json:"success_rate"`     // Percentage of good answers
+	CreatedAt    time.Time              `json:"created_at"`
+	CreatedBy    string                 `json:"created_by"`       // AI agent identifier
+	UpdatedAt    time.Time              `json:"updated_at"`
+}
+
+// HandshakeSession represents an active node handshake attempt
+type HandshakeSession struct {
+	ID              string    `json:"id"`
+	RequestingNode  string    `json:"requesting_node"`    // Domain of node trying to join
+	RespondingNode  string    `json:"responding_node"`    // Domain of existing node
+	RiddleID        string    `json:"riddle_id"`
+	ChallengeToken  string    `json:"challenge_token"`
+	CallbackDomain  string    `json:"callback_domain"`
+	Answer          string    `json:"answer,omitempty"`
+	Score           float64   `json:"score,omitempty"`
+	Status          string    `json:"status"`             // "pending", "answered", "evaluated", "completed", "failed", "expired"
+	ExpiresAt       time.Time `json:"expires_at"`
+	CreatedAt       time.Time `json:"created_at"`
+	CompletedAt     *time.Time `json:"completed_at,omitempty"`
+}
+
 // CreditTransaction represents a micropayment transaction
 type CreditTransaction struct {
 	ID          string    `json:"id"`

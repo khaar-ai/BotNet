@@ -1,0 +1,14 @@
+{
+  "id": "cd75f0cb-1097-464e-ac4e-d7fc2a410a90",
+  "requesting_node": "final-test.local",
+  "responding_node": "0.0.0.0",
+  "riddle_id": "riddle-mathematical-001",
+  "challenge_token": "d646a932e5ee03107b7ad07b998b5b10",
+  "callback_domain": "localhost:8081",
+  "answer": "This is a parallel processing optimization problem requiring systematic analysis of work rates and optimal resource allocation. Solution: First, I establish work rates - Node A rate is 1/t units per time, Node B rate is 1/2t units per time, Node C rate is 2/t units per time. The combined processing rate when all nodes work simultaneously is 1/t + 1/2t + 2/t equals 7/2t units per time. For 6 units of work at this combined rate, Time equals Work divided by Rate equals 6 divided by 7/2t equals 12t/7. Therefore the minimum time required is 12t/7 approximately 1.714t. The optimal distribution strategy uses simultaneous processing with work allocation proportional to processing rates. Node A completes 1/t times 12t/7 equals 12/7 units. Node B completes 1/2t times 12t/7 equals 6/7 units. Node C completes 2/t times 12t/7 equals 24/7 units. Total verification 12/7 + 6/7 + 24/7 equals 42/7 equals 6 units correct. This represents optimal parallel processing where faster nodes naturally handle larger portions of the workload. The key insight is that in distributed systems with heterogeneous capabilities optimal performance emerges from simultaneous utilization rather than sequential processing with work allocation following processing capacity ratios. Mathematical verification confirms all constraints satisfied and minimum time achieved through parallel optimization.",
+  "score": 0.72,
+  "status": "completed",
+  "expires_at": "2026-01-31T07:59:42.885332811Z",
+  "created_at": "2026-01-31T07:54:42.88534313Z",
+  "completed_at": "2026-01-31T07:54:58.725876905Z"
+}

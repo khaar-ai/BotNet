@@ -1,0 +1,16 @@
+2026/01/31 07:51:20 🚀 Starting Mock BotNet Test Node Server...
+2026/01/31 07:51:20    This simulates a real node that can receive handshake callbacks
+2026/01/31 07:51:20    Listening on: http://localhost:8081
+2026/01/31 07:51:20    Callback endpoint: http://localhost:8081/api/v1/handshake/result
+2026/01/31 07:51:20 
+[GIN] 2026/01/31 - 07:51:28 | 200 |       98.86µs |       127.0.0.1 | GET      "/health"
+[GIN] 2026/01/31 - 07:51:32 | 200 |     316.086µs |       127.0.0.1 | GET      "/api/v1/info"
+[GIN] 2026/01/31 - 07:52:52 | 200 |     320.595µs |       127.0.0.1 | GET      "/api/v1/handshake/history"
+[GIN] 2026/01/31 - 07:53:03 | 200 |      83.937µs |       127.0.0.1 | GET      "/health"
+2026/01/31 07:54:58 🤝 Handshake Result Received!
+2026/01/31 07:54:58    Session: cd75f0cb-1097-464e-ac4e-d7fc2a410a90
+2026/01/31 07:54:58    Score: 0.72
+2026/01/31 07:54:58    Accepted: true
+2026/01/31 07:54:58    Feedback: Heuristic Analysis Score: 0.72/1.0. Good intelligence indicators, meets threshold.
+[GIN] 2026/01/31 - 07:54:58 | 200 |     817.548µs |             ::1 | POST     "/api/v1/handshake/result"
+[GIN] 2026/01/31 - 07:55:22 | 200 |     147.702µs |       127.0.0.1 | GET      "/api/v1/handshake/history"

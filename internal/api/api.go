@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -258,6 +260,196 @@ func SetupRegistryRoutes(router *gin.Engine, service *registry.Service, cfg *con
 				Success: true,
 				Data:    entry,
 				Message: "Entry added to blacklist",
+			})
+		})
+	}
+	
+	// Handshake system for node joining
+	handshake := v1.Group("/handshake")
+	{
+		// Step 1: New node requests to join
+		handshake.POST("/join-request", func(c *gin.Context) {
+			var request struct {
+				Domain    string `json:"domain" binding:"required"`
+				PublicKey string `json:"public_key" binding:"required"`
+				NodeInfo  map[string]interface{} `json:"node_info"`
+			}
+			
+			if err := c.ShouldBindJSON(&request); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			session, riddle, err := service.StartHandshake(request.Domain, request.PublicKey, request.NodeInfo)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: gin.H{
+					"session_id":      session.ID,
+					"riddle_id":       riddle.ID,
+					"question":        riddle.Question,
+					"category":        riddle.Category,
+					"difficulty":      riddle.Difficulty,
+					"expected_type":   riddle.ExpectedType,
+					"challenge_token": session.ChallengeToken,
+					"expires_at":      session.ExpiresAt,
+					"metadata":        riddle.Metadata,
+				},
+			})
+		})
+		
+		// Step 2: Node submits riddle answer
+		handshake.POST("/riddle-response", func(c *gin.Context) {
+			var response struct {
+				SessionID      string `json:"session_id" binding:"required"`
+				RiddleID       string `json:"riddle_id" binding:"required"`
+				Answer         string `json:"answer" binding:"required"`
+				CallbackDomain string `json:"callback_domain" binding:"required"`
+				ChallengeToken string `json:"challenge_token" binding:"required"`
+			}
+			
+			if err := c.ShouldBindJSON(&response); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			err := service.ProcessRiddleResponse(response.SessionID, response.Answer, response.CallbackDomain)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Message: "Answer submitted successfully. Awaiting evaluation.",
+			})
+		})
+		
+		// Step 3: External endpoint for receiving handshake results
+		handshake.POST("/result", func(c *gin.Context) {
+			var result struct {
+				SessionID    string  `json:"session_id" binding:"required"`
+				Score        float64 `json:"score" binding:"required"`
+				Accepted     bool    `json:"accepted" binding:"required"`
+				RiddleID     string  `json:"riddle_id"`
+				EvaluatorID  string  `json:"evaluator_id"`
+				Feedback     string  `json:"feedback"`
+			}
+			
+			if err := c.ShouldBindJSON(&result); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			err := service.ProcessHandshakeResult(result.SessionID, result.Score, result.Accepted, result.Feedback)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Message: "Handshake result processed successfully",
+			})
+		})
+		
+		// Get handshake status
+		handshake.GET("/status/:session_id", func(c *gin.Context) {
+			sessionID := c.Param("session_id")
+			
+			session, err := service.GetHandshakeSession(sessionID)
+			if err != nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Handshake session not found",
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    session,
+			})
+		})
+	}
+	
+	// Riddle management
+	riddles := v1.Group("/riddles")
+	{
+		// Get riddles (for debugging/inspection)
+		riddles.GET("", func(c *gin.Context) {
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+			category := c.Query("category")
+			
+			riddleList, total, err := service.ListRiddles(category, page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			totalPages := (int(total) + pageSize - 1) / pageSize
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: types.PaginatedResponse{
+					Data:       riddleList,
+					Page:       page,
+					PageSize:   pageSize,
+					Total:      total,
+					TotalPages: totalPages,
+				},
+			})
+		})
+		
+		// Add new riddle (for nodes to contribute)
+		riddles.POST("", func(c *gin.Context) {
+			var riddle types.Riddle
+			if err := c.ShouldBindJSON(&riddle); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			if err := service.AddRiddle(&riddle); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    riddle,
+				Message: "Riddle added successfully",
 			})
 		})
 	}
@@ -548,8 +740,11 @@ func healthHandler(c *gin.Context) {
 func statusPageHandler(c *gin.Context, service *registry.Service) {
 	info := service.GetInfo()
 	
-	// Get recent nodes (last 10)
-	nodes, _, _ := service.ListNodes(1, 10)
+	// Get all active nodes 
+	nodes, _, _ := service.ListNodes(1, 100)
+	
+	// Get all agents
+	agents, _, _ := service.ListAgents("", 1, 100)
 	
 	html := `<!DOCTYPE html>
 <html>
@@ -622,23 +817,55 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
             border-bottom: 1px solid #2d3748;
             padding-bottom: 10px;
         }
-        .node-list {
+        .node-list, .agent-list {
             display: grid;
             gap: 10px;
+            margin-bottom: 20px;
         }
-        .node-item {
+        .node-item, .agent-item {
             background: #0f1419;
             padding: 15px;
             border-radius: 6px;
             border-left: 4px solid #4fc3f7;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
         }
-        .node-domain { 
+        .agent-item {
+            border-left-color: #66bb6a;
+        }
+        .item-main { }
+        .item-meta {
+            text-align: right;
+            font-size: 0.85em;
+            color: #9e9e9e;
+        }
+        .item-domain, .item-name { 
             font-weight: bold; 
             color: #4fc3f7; 
+            margin-bottom: 5px;
         }
-        .node-status { 
+        .agent-item .item-name {
+            color: #66bb6a;
+        }
+        .item-status { 
             color: #4caf50; 
             font-size: 0.9em; 
+        }
+        .item-reputation {
+            color: #ffa726;
+            font-weight: bold;
+        }
+        .item-capabilities {
+            color: #9e9e9e;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
+        .empty-state {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 20px;
         }
         .api-endpoints { 
             background: #0f1419; 
@@ -702,19 +929,100 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
         </div>
 
         <div class="section">
-            <h3>🔗 Recent Nodes</h3>
+            <h3>🔗 Active Network Nodes</h3>
             <div class="node-list">`
 
-	for _, node := range nodes {
-		html += `
+	if len(nodes) == 0 {
+		html += `<div class="empty-state">No nodes registered yet. Be the first to join the network!</div>`
+	} else {
+		for _, node := range nodes {
+			capabilities := strings.Join(node.Capabilities, ", ")
+			if len(capabilities) > 60 {
+				capabilities = capabilities[:57] + "..."
+			}
+			
+			statusColor := "#4caf50" // green for active
+			if node.Status != "active" {
+				statusColor = "#ff9800" // orange for inactive
+			}
+			
+			html += fmt.Sprintf(`
                 <div class="node-item">
-                    <div class="node-domain">` + node.Domain + `</div>
-                    <div class="node-status">Status: ` + node.Status + ` | Last Seen: ` + node.LastSeen.Format("Jan 02, 15:04") + `</div>
-                </div>`
+                    <div class="item-main">
+                        <div class="item-domain">%s</div>
+                        <div class="item-status" style="color: %s;">%s</div>
+                        <div class="item-capabilities">%s</div>
+                    </div>
+                    <div class="item-meta">
+                        <div class="item-reputation">🏆 %d</div>
+                        <div>Last seen: %s</div>
+                        <div>v%s</div>
+                    </div>
+                </div>`,
+				node.Domain,
+				statusColor,
+				strings.Title(node.Status),
+				capabilities,
+				node.Reputation,
+				node.LastSeen.Format("Jan 02, 15:04"),
+				node.Version)
+		}
 	}
 
-	if len(nodes) == 0 {
-		html += `<div class="node-item">No nodes registered yet. Be the first to join the network!</div>`
+	html += `
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>🤖 AI Agents</h3>
+            <div class="agent-list">`
+
+	if len(agents) == 0 {
+		html += `<div class="empty-state">No AI agents registered yet. Nodes can register their agents here.</div>`
+	} else {
+		for _, agent := range agents {
+			capabilities := strings.Join(agent.Capabilities, ", ")
+			if len(capabilities) > 50 {
+				capabilities = capabilities[:47] + "..."
+			}
+			
+			statusColor := "#66bb6a" // light green for online
+			statusText := strings.Title(agent.Status)
+			if agent.Status == "offline" {
+				statusColor = "#9e9e9e"
+			} else if agent.Status == "busy" {
+				statusColor = "#ff9800"
+			}
+			
+			displayName := agent.Name
+			if agent.Profile.DisplayName != "" {
+				displayName = agent.Profile.DisplayName
+			}
+			
+			nodeIDShort := agent.NodeID
+			if len(nodeIDShort) > 8 {
+				nodeIDShort = nodeIDShort[:8] + "..."
+			}
+			
+			html += fmt.Sprintf(`
+                <div class="agent-item">
+                    <div class="item-main">
+                        <div class="item-name">%s</div>
+                        <div class="item-status" style="color: %s;">%s</div>
+                        <div class="item-capabilities">%s</div>
+                    </div>
+                    <div class="item-meta">
+                        <div>Node: %s</div>
+                        <div>Active: %s</div>
+                    </div>
+                </div>`,
+				displayName,
+				statusColor,
+				statusText,
+				capabilities,
+				nodeIDShort,
+				agent.LastActive.Format("Jan 02, 15:04"))
+		}
 	}
 
 	html += `
@@ -727,6 +1035,10 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
                 <div class="endpoint"><span class="endpoint-url">GET /api/v1/info</span> - Registry information</div>
                 <div class="endpoint"><span class="endpoint-url">GET /api/v1/nodes</span> - List all nodes</div>
                 <div class="endpoint"><span class="endpoint-url">POST /api/v1/nodes</span> - Register new node</div>
+                <div class="endpoint"><span class="endpoint-url">GET /api/v1/agents</span> - List AI agents</div>
+                <div class="endpoint"><span class="endpoint-url">POST /api/v1/handshake/join-request</span> - Request to join network</div>
+                <div class="endpoint"><span class="endpoint-url">POST /api/v1/handshake/riddle-response</span> - Submit riddle answer</div>
+                <div class="endpoint"><span class="endpoint-url">GET /api/v1/riddles</span> - Browse riddle pool</div>
                 <div class="endpoint"><span class="endpoint-url">GET /health</span> - Health check</div>
                 <div class="endpoint"><span class="endpoint-url">WS /ws</span> - WebSocket for real-time updates</div>
             </div>
