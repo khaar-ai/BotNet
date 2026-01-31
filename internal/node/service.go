@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/khaar-ai/BotNet/internal/config"
+	"github.com/khaar-ai/BotNet/internal/crypto"
 	"github.com/khaar-ai/BotNet/internal/discovery"
 	"github.com/khaar-ai/BotNet/internal/storage"
 	"github.com/khaar-ai/BotNet/pkg/types"
@@ -41,6 +43,11 @@ type Service struct {
 	// Discovery and federation
 	discovery     *discovery.DNSService
 	
+	// Cryptographic components for message authentication
+	keyStore       *crypto.AgentKeyStore
+	publicKeyCache *crypto.PublicKeyCache
+	keyFetcher     *crypto.PublicKeyFetcher
+	
 	// Configuration
 	config    *config.NodeConfig
 	startTime time.Time
@@ -53,16 +60,29 @@ type Service struct {
 
 // New creates a new decentralized node service
 func New(localStorage storage.Storage, discovery *discovery.DNSService, config *config.NodeConfig) *Service {
+	// Initialize cryptographic components
+	keysDir := filepath.Join(config.DataDir, "keys")
+	keyStore, err := crypto.NewAgentKeyStore(keysDir)
+	if err != nil {
+		log.Fatalf("Failed to initialize key store: %v", err)
+	}
+
+	publicKeyCache := crypto.NewPublicKeyCache(1 * time.Hour) // Cache keys for 1 hour
+	keyFetcher := crypto.NewPublicKeyFetcher(publicKeyCache)
+
 	service := &Service{
-		nodeID:       config.NodeID,
-		domain:       config.Domain, 
-		capabilities: config.Capabilities,
-		localStorage: localStorage,
-		discovery:    discovery,
-		config:       config,
-		startTime:    time.Now(),
-		neighbors:    make(map[string]*NeighborNode),
-		maxNeighbors: 8, // Maximum 8 neighbor nodes for better management
+		nodeID:         config.NodeID,
+		domain:         config.Domain, 
+		capabilities:   config.Capabilities,
+		localStorage:   localStorage,
+		discovery:      discovery,
+		keyStore:       keyStore,
+		publicKeyCache: publicKeyCache,
+		keyFetcher:     keyFetcher,
+		config:         config,
+		startTime:      time.Now(),
+		neighbors:      make(map[string]*NeighborNode),
+		maxNeighbors:   8, // Maximum 8 neighbor nodes for better management
 	}
 	
 	return service
@@ -424,6 +444,26 @@ func (s *Service) RegisterLocalAgent(agent *types.Agent) error {
 		agent.Capabilities = []string{"messaging", "challenges"}
 	}
 	
+	// Generate Ed25519 keypair for the agent
+	if !s.keyStore.HasKey(agent.ID) {
+		keyPair, err := s.keyStore.GenerateAndStoreKeyPair(agent.ID)
+		if err != nil {
+			return fmt.Errorf("failed to generate keypair for agent %s: %v", agent.ID, err)
+		}
+		
+		// Set the public key in the agent record (this gets federated)
+		agent.PublicKey = keyPair.PublicKeyToBase64()
+		log.Printf("Generated keypair for agent '%s'", agent.Name)
+	} else {
+		// Use existing public key
+		publicKey, err := s.keyStore.GetPublicKey(agent.ID)
+		if err != nil {
+			return fmt.Errorf("failed to get existing public key for agent %s: %v", agent.ID, err)
+		}
+		agent.PublicKey = publicKey
+		log.Printf("Using existing keypair for agent '%s'", agent.Name)
+	}
+	
 	log.Printf("Registering local agent '%s' to node %s", agent.Name, s.nodeID)
 	return s.localStorage.SaveAgent(agent)
 }
@@ -466,6 +506,18 @@ func (s *Service) PostMessage(message *types.Message) error {
 	// Set timestamp
 	message.Timestamp = time.Now()
 	
+	// CRYPTOGRAPHIC SIGNING: Sign the message with agent's private key
+	privateKey, err := s.keyStore.GetPrivateKey(message.AuthorID)
+	if err != nil {
+		return fmt.Errorf("failed to get private key for agent %s: %v", message.AuthorID, err)
+	}
+	
+	if err := crypto.SignMessage(message, privateKey); err != nil {
+		return fmt.Errorf("failed to sign message: %v", err)
+	}
+	
+	log.Printf("Message signed by agent %s: signature=%s", message.AuthorID, message.Signature[:20]+"...")
+	
 	// Save message
 	if err := s.localStorage.SaveMessage(message); err != nil {
 		return fmt.Errorf("failed to save message: %w", err)
@@ -504,6 +556,18 @@ func (s *Service) CreateMessage(authorID, content string, metadata map[string]in
 		Timestamp: time.Now(),
 		Metadata:  metadata,
 	}
+	
+	// CRYPTOGRAPHIC SIGNING: Sign the message with agent's private key
+	privateKey, err := s.keyStore.GetPrivateKey(authorID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get private key for agent %s: %v", authorID, err)
+	}
+	
+	if err := crypto.SignMessage(message, privateKey); err != nil {
+		return nil, fmt.Errorf("failed to sign message: %v", err)
+	}
+	
+	log.Printf("Message signed by agent %s: signature=%s", authorID, message.Signature[:20]+"...")
 	
 	if err := s.localStorage.SaveMessage(message); err != nil {
 		return nil, err
@@ -750,8 +814,13 @@ func (s *Service) markNeighborUnhealthy(neighbor *NeighborNode) {
 
 // ProcessIncomingMessage processes a message received from another node
 func (s *Service) ProcessIncomingMessage(message *types.Message) error {
-	// Validate message signature
-	// TODO: Implement message signature validation
+	// CRYPTOGRAPHIC VERIFICATION: Validate message signature
+	if err := s.validateIncomingMessageSignature(message); err != nil {
+		log.Printf("SECURITY: Rejected message from %s: %v", message.AuthorID, err)
+		return fmt.Errorf("signature verification failed: %v", err)
+	}
+	
+	log.Printf("SECURITY: Message signature verified for agent %s", message.AuthorID)
 	
 	// Check if we already have this message
 	existing, err := s.localStorage.GetMessage(message.ID)
@@ -761,6 +830,65 @@ func (s *Service) ProcessIncomingMessage(message *types.Message) error {
 	
 	// Save the message
 	return s.localStorage.SaveMessage(message)
+}
+
+// validateIncomingMessageSignature verifies the cryptographic signature of an incoming message
+func (s *Service) validateIncomingMessageSignature(message *types.Message) error {
+	if message == nil {
+		return fmt.Errorf("message is nil")
+	}
+	
+	if message.AuthorID == "" {
+		return fmt.Errorf("message missing author ID")
+	}
+	
+	if message.Signature == "" {
+		return fmt.Errorf("message missing signature")
+	}
+	
+	// Try to get author's public key from local storage first
+	agent, err := s.localStorage.GetAgent(message.AuthorID)
+	if err == nil && agent != nil && agent.PublicKey != "" {
+		// We have the agent locally, use their public key
+		return crypto.ValidateMessageSignature(message, agent.PublicKey)
+	}
+	
+	// Agent not local, need to fetch public key from federation
+	neighbors := s.getNeighborList()
+	if len(neighbors) == 0 {
+		return fmt.Errorf("no neighbor nodes available to fetch public key for agent %s", message.AuthorID)
+	}
+	
+	// Try to fetch public key from neighbors
+	publicKeyBase64, err := s.keyFetcher.FetchPublicKey(message.AuthorID, neighbors)
+	if err != nil {
+		return fmt.Errorf("failed to fetch public key for agent %s: %v", message.AuthorID, err)
+	}
+	
+	// Verify the signature with the fetched public key
+	if err := crypto.ValidateMessageSignature(message, publicKeyBase64); err != nil {
+		return fmt.Errorf("signature verification failed for agent %s: %v", message.AuthorID, err)
+	}
+	
+	return nil
+}
+
+// getNeighborList returns neighbors in the format expected by PublicKeyFetcher
+func (s *Service) getNeighborList() []crypto.NeighborNode {
+	s.neighborMutex.RLock()
+	defer s.neighborMutex.RUnlock()
+	
+	var neighbors []crypto.NeighborNode
+	for _, neighbor := range s.neighbors {
+		if neighbor.Status == "active" {
+			neighbors = append(neighbors, crypto.NeighborNode{
+				ID:  neighbor.ID,
+				URL: neighbor.URL,
+			})
+		}
+	}
+	
+	return neighbors
 }
 
 // NEIGHBOR NODE MANAGEMENT
@@ -966,6 +1094,23 @@ func (s *Service) broadcastToNeighbors(endpoint string, data interface{}) {
 // generateNeighborID creates a unique ID for a neighbor
 func generateNeighborID(domain string) string {
 	return fmt.Sprintf("neighbor-%s-%d", domain, time.Now().Unix())
+}
+
+// PUBLIC KEY DISTRIBUTION API
+
+// GetAgentPublicKey returns the public key for a specific agent
+func (s *Service) GetAgentPublicKey(agentID string) (string, string, error) {
+	// Check if agent exists on this node
+	agent, err := s.localStorage.GetAgent(agentID)
+	if err != nil {
+		return "", "", fmt.Errorf("agent not found: %s", agentID)
+	}
+	
+	if agent.PublicKey == "" {
+		return "", "", fmt.Errorf("agent %s has no public key", agentID)
+	}
+	
+	return agent.PublicKey, s.nodeID, nil
 }
 
 // PEER REGISTRY METHODS (acting as own registry)

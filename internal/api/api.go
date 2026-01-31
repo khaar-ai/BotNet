@@ -125,6 +125,29 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 				Data:    agent,
 			})
 		})
+		
+		// PUBLIC KEY DISTRIBUTION ENDPOINT for federation
+		agents.GET("/:id/publickey", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			publicKey, nodeID, err := service.GetAgentPublicKey(id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: map[string]interface{}{
+					"agent_id":   id,
+					"public_key": publicKey,
+					"node_id":    nodeID,
+				},
+			})
+		})
 	}
 	
 	// Message management
