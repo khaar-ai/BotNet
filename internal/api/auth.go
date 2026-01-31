@@ -1,19 +1,18 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/khaar-ai/BotNet/internal/config"
-	"github.com/khaar-ai/BotNet/pkg/types"
 )
 
 // AuthHandler handles authentication routes
@@ -82,23 +81,27 @@ type CustomClaims struct {
 }
 
 // RegisterLeaf handles leaf registration with GitHub OAuth
-func (h *AuthHandler) RegisterLeaf(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) RegisterLeaf(c *gin.Context) {
 	var req LeafRegistrationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	
+	// Check if there's a converted request from device flow
+	if convertedReq, exists := c.Get("converted_request"); exists {
+		req = convertedReq.(LeafRegistrationRequest)
+	} else if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	// Verify GitHub token
 	user, err := h.verifyGitHubToken(req.GitHubToken)
 	if err != nil {
-		h.respondWithError(w, http.StatusUnauthorized, "Invalid GitHub token", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid GitHub token", "details": err.Error()})
 		return
 	}
 
 	// Validate agent name
 	if req.AgentName == "" || len(req.AgentName) < 3 {
-		http.Error(w, "Agent name must be at least 3 characters", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Agent name must be at least 3 characters"})
 		return
 	}
 
@@ -121,7 +124,7 @@ func (h *AuthHandler) RegisterLeaf(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.signJWT(claims)
 	if err != nil {
-		h.respondWithError(w, http.StatusInternalServerError, "Failed to create token", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token", "details": err.Error()})
 		return
 	}
 
@@ -134,34 +137,33 @@ func (h *AuthHandler) RegisterLeaf(w http.ResponseWriter, r *http.Request) {
 		Message:      fmt.Sprintf("Leaf agent '%s' registered successfully", req.AgentName),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	c.JSON(http.StatusOK, response)
 }
 
 // RegisterNode handles node registration with domain verification
-func (h *AuthHandler) RegisterNode(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) RegisterNode(c *gin.Context) {
 	var req NodeRegistrationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	// Verify GitHub token
 	user, err := h.verifyGitHubToken(req.GitHubToken)
 	if err != nil {
-		h.respondWithError(w, http.StatusUnauthorized, "Invalid GitHub token", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid GitHub token", "details": err.Error()})
 		return
 	}
 
 	// Validate domain format
 	if !strings.HasPrefix(req.Domain, "botnet.") {
-		http.Error(w, "Domain must start with 'botnet.'", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Domain must start with 'botnet.'"})
 		return
 	}
 
 	// Verify domain ownership via DNS TXT record
 	if err := h.verifyDomainOwnership(req.Domain, fmt.Sprintf("%d", user.ID)); err != nil {
-		h.respondWithError(w, http.StatusForbidden, "Domain ownership verification failed", err)
+		c.JSON(http.StatusForbidden, gin.H{"error": "Domain ownership verification failed", "details": err.Error()})
 		return
 	}
 
@@ -184,7 +186,7 @@ func (h *AuthHandler) RegisterNode(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.signJWT(claims)
 	if err != nil {
-		h.respondWithError(w, http.StatusInternalServerError, "Failed to create token", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token", "details": err.Error()})
 		return
 	}
 
@@ -196,8 +198,7 @@ func (h *AuthHandler) RegisterNode(w http.ResponseWriter, r *http.Request) {
 		Message:      fmt.Sprintf("Node '%s' registered successfully", req.Domain),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	c.JSON(http.StatusOK, response)
 }
 
 // verifyGitHubToken validates GitHub OAuth token and returns user info
@@ -314,11 +315,12 @@ func (h *AuthHandler) signJWT(claims CustomClaims) (string, error) {
 }
 
 // ValidateJWT middleware validates JWT tokens
-func (h *AuthHandler) ValidateJWT(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
+func (h *AuthHandler) ValidateJWT() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			http.Error(w, "Missing or invalid authorization header", http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid authorization header"})
+			c.Abort()
 			return
 		}
 
@@ -329,31 +331,22 @@ func (h *AuthHandler) ValidateJWT(next http.HandlerFunc) http.HandlerFunc {
 		})
 
 		if err != nil || !token.Valid {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
 			return
 		}
 
 		claims, ok := token.Claims.(*CustomClaims)
 		if !ok {
-			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
+			c.Abort()
 			return
 		}
 
-		// Add claims to request context
-		ctx := context.WithValue(r.Context(), "user_claims", claims)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		// Add claims to gin context
+		c.Set("user_claims", claims)
+		c.Next()
 	}
 }
 
-// respondWithError sends error response
-func (h *AuthHandler) respondWithError(w http.ResponseWriter, status int, message string, err error) {
-	response := types.APIResponse{
-		Success: false,
-		Error:   message,
-		Message: err.Error(),
-	}
-	
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(response)
-}
+// respondWithError function removed - using gin.Context.JSON directly

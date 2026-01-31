@@ -2,13 +2,12 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/khaar-ai/BotNet/internal/config"
 )
 
@@ -56,7 +55,7 @@ type DeviceTokenResponse struct {
 }
 
 // RequestDeviceCode initiates device authorization flow
-func (h *DeviceAuthHandler) RequestDeviceCode(w http.ResponseWriter, r *http.Request) {
+func (h *DeviceAuthHandler) RequestDeviceCode(c *gin.Context) {
 	// GitHub Device Flow: POST to https://github.com/login/device/code
 	
 	data := url.Values{}
@@ -65,34 +64,42 @@ func (h *DeviceAuthHandler) RequestDeviceCode(w http.ResponseWriter, r *http.Req
 	
 	client := &http.Client{Timeout: 30 * time.Second}
 	
-	resp, err := client.PostForm("https://github.com/login/device/code", data)
+	req, err := http.NewRequest("POST", "https://github.com/login/device/code", strings.NewReader(data.Encode()))
 	if err != nil {
-		http.Error(w, "Failed to request device code", http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+		return
+	}
+	
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to request device code"})
 		return
 	}
 	defer resp.Body.Close()
 	
 	var deviceCode DeviceCodeResponse
 	if err := json.NewDecoder(resp.Body).Decode(&deviceCode); err != nil {
-		http.Error(w, "Failed to parse device code response", http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse device code response"})
 		return
 	}
 	
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(deviceCode)
+	c.JSON(http.StatusOK, deviceCode)
 }
 
 // PollForToken polls GitHub for device authorization completion
-func (h *DeviceAuthHandler) PollForToken(w http.ResponseWriter, r *http.Request) {
+func (h *DeviceAuthHandler) PollForToken(c *gin.Context) {
 	var req TokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 	
 	// Validate required fields
 	if req.DeviceCode == "" || req.GrantType != "urn:ietf:params:oauth:grant-type:device_code" {
-		http.Error(w, "Invalid request parameters", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request parameters"})
 		return
 	}
 	
@@ -107,7 +114,7 @@ func (h *DeviceAuthHandler) PollForToken(w http.ResponseWriter, r *http.Request)
 	
 	httpReq, err := http.NewRequest("POST", "https://github.com/login/oauth/access_token", strings.NewReader(data.Encode()))
 	if err != nil {
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
 		return
 	}
 	
@@ -116,23 +123,22 @@ func (h *DeviceAuthHandler) PollForToken(w http.ResponseWriter, r *http.Request)
 	
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		http.Error(w, "Failed to poll for token", http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to poll for token"})
 		return
 	}
 	defer resp.Body.Close()
 	
 	var tokenResp DeviceTokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		http.Error(w, "Failed to parse token response", http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse token response"})
 		return
 	}
 	
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tokenResp)
+	c.JSON(http.StatusOK, tokenResp)
 }
 
 // RegisterLeafWithDevice handles leaf registration using device flow token
-func (h *DeviceAuthHandler) RegisterLeafWithDevice(w http.ResponseWriter, r *http.Request) {
+func (h *DeviceAuthHandler) RegisterLeafWithDevice(c *gin.Context) {
 	// This would use the same logic as the regular RegisterLeaf but with device flow token
 	// For now, redirect to the main auth handler
 	
@@ -142,33 +148,24 @@ func (h *DeviceAuthHandler) RegisterLeafWithDevice(w http.ResponseWriter, r *htt
 	}
 	
 	var req DeviceLeafRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 	
 	// Create standard auth handler and delegate
 	authHandler := NewAuthHandler(h.config)
 	
-	// Convert device flow request to standard format
+	// Convert device flow request to standard format and set in context
 	leafReq := LeafRegistrationRequest{
 		GitHubToken: req.AccessToken,
 		AgentName:   req.AgentName,
 	}
 	
-	// Create new request with converted body
-	reqBody, _ := json.Marshal(leafReq)
-	newReq := r.Clone(r.Context())
-	newReq.Body = &readCloser{strings.NewReader(string(reqBody))}
+	// Create new gin context with the leaf request
+	c.Set("leaf_request", leafReq)
 	
-	authHandler.RegisterLeaf(w, newReq)
-}
-
-// Helper type for request body
-type readCloser struct {
-	*strings.Reader
-}
-
-func (rc *readCloser) Close() error {
-	return nil
+	// Set the converted request in gin context and call RegisterLeaf
+	c.Set("converted_request", leafReq)
+	authHandler.RegisterLeaf(c)
 }

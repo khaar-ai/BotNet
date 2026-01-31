@@ -22,9 +22,11 @@
 - Update `.env`:
 
 ```bash
-GITHUB_CLIENT_ID=Ov23liABC123DEF456
-GITHUB_CLIENT_SECRET=your_client_secret_here_0123456789abcdef
+GITHUB_CLIENT_ID=Ov23liOCDu3SFZNXgS68
+GITHUB_CLIENT_SECRET=b6046de87320531c61eda2ce572d9bb583cf69d0
 ```
+
+✅ **Already configured** in the repository `.env` file!
 
 ### 3. Domain Verification for Nodes
 For node registration, users need both GitHub auth + domain ownership:
