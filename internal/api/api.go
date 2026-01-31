@@ -316,6 +316,87 @@ func SetupRegistryRoutes(router *gin.Engine, service *registry.Service, cfg *con
 		})
 	}
 	
+	// Neighbor management
+	neighbors := v1.Group("/neighbors")
+	{
+		neighbors.GET("", func(c *gin.Context) {
+			neighborList := service.GetNeighbors()
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    neighborList,
+			})
+		})
+		
+		neighbors.POST("", func(c *gin.Context) {
+			var request struct {
+				Domain string `json:"domain" binding:"required"`
+				URL    string `json:"url" binding:"required"`
+			}
+			
+			if err := c.ShouldBindJSON(&request); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			// Validate URL format
+			if !strings.HasPrefix(request.URL, "http://") && !strings.HasPrefix(request.URL, "https://") {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   "URL must start with http:// or https://",
+				})
+				return
+			}
+			
+			if err := service.AddNeighbor(request.Domain, request.URL); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Message: fmt.Sprintf("Neighbor %s added successfully", request.Domain),
+			})
+		})
+		
+		neighbors.DELETE("/:domain", func(c *gin.Context) {
+			domain := c.Param("domain")
+			
+			service.RemoveNeighbor(domain)
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Message: fmt.Sprintf("Neighbor %s removed successfully", domain),
+			})
+		})
+		
+		neighbors.GET("/:domain/status", func(c *gin.Context) {
+			domain := c.Param("domain")
+			
+			neighborList := service.GetNeighbors()
+			for _, neighbor := range neighborList {
+				if neighbor.Domain == domain {
+					c.JSON(http.StatusOK, types.APIResponse{
+						Success: true,
+						Data:    neighbor,
+					})
+					return
+				}
+			}
+			
+			c.JSON(http.StatusNotFound, types.APIResponse{
+				Success: false,
+				Error:   "Neighbor not found",
+			})
+		})
+	}
+	
 	// Agent discovery
 	agents := v1.Group("/agents")
 	{
@@ -1004,6 +1085,7 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
             box-shadow: 0 4px 12px rgba(102, 187, 106, 0.2);
             border-left-color: #81c784;
         }
+        /* Removed centralized styling - network is decentralized */
         .item-main { }
         .item-meta {
             text-align: right;
@@ -1143,7 +1225,41 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
         </div>
 
         <div class="section">
-            <h3>🔗 Active Network Nodes</h3>
+            <h3>🌐 Connected Neighbor Registries</h3>
+            <div class="neighbor-list">`
+            
+	neighbors := service.GetNeighbors()
+	if len(neighbors) == 0 {
+		html += `<div class="empty-state">No neighbor registries connected. This registry is operating independently.</div>`
+	} else {
+		for _, neighbor := range neighbors {
+			statusColor := "#4caf50" // green for connected
+			statusIcon := "🟢"
+			if neighbor.Status != "connected" {
+				statusColor = "#ff9800" // orange for connecting/disconnected
+				statusIcon = "🟡"
+			}
+			
+			html += fmt.Sprintf(`
+                <div class="item neighbor-item">
+                    <div class="item-main">
+                        <strong>%s</strong> <span style="color: %s;">%s %s</span>
+                        <br><small style="color: #888;">%s | Last seen: %s</small>
+                    </div>
+                </div>`,
+				neighbor.Domain,
+				statusColor, statusIcon, neighbor.Status,
+				neighbor.URL,
+				neighbor.LastSeen.Format("15:04:05"))
+		}
+	}
+	
+	html += `
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>🔗 Neighbour Network Nodes</h3>
             <div class="node-list">`
 
 	if len(nodes) == 0 {
@@ -1257,6 +1373,9 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
                 <div class="endpoint"><span class="endpoint-url">GET /api/v1/info</span> - Registry information</div>
                 <div class="endpoint"><span class="endpoint-url">GET /api/v1/nodes</span> - List all nodes</div>
                 <div class="endpoint"><span class="endpoint-url">POST /api/v1/nodes</span> - Register new node</div>
+                <div class="endpoint"><span class="endpoint-url">GET /api/v1/neighbors</span> - List neighbor registries</div>
+                <div class="endpoint"><span class="endpoint-url">POST /api/v1/neighbors</span> - Add neighbor registry</div>
+                <div class="endpoint"><span class="endpoint-url">DELETE /api/v1/neighbors/:domain</span> - Remove neighbor</div>
                 <div class="endpoint"><span class="endpoint-url">GET /api/v1/agents</span> - List AI agents</div>
                 <div class="endpoint"><span class="endpoint-url">POST /api/v1/handshake/join-request</span> - Request to join network</div>
                 <div class="endpoint"><span class="endpoint-url">POST /api/v1/handshake/riddle-response</span> - Submit riddle answer</div>

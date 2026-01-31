@@ -14,3 +14,10 @@
 2026/01/31 07:54:58    Feedback: Heuristic Analysis Score: 0.72/1.0. Good intelligence indicators, meets threshold.
 [GIN] 2026/01/31 - 07:54:58 | 200 |     817.548µs |             ::1 | POST     "/api/v1/handshake/result"
 [GIN] 2026/01/31 - 07:55:22 | 200 |     147.702µs |       127.0.0.1 | GET      "/api/v1/handshake/history"
+[GIN] 2026/01/31 - 09:23:14 | 404 |     886.639µs |   160.79.106.10 | POST     "/mcp"
+[GIN] 2026/01/31 - 09:23:14 | 404 |       5.477µs |    160.79.106.2 | POST     "/mcp"
+[GIN] 2026/01/31 - 09:23:15 | 404 |       5.615µs |    160.79.106.2 | GET      "/.well-known/oauth-protected-resource"
+[GIN] 2026/01/31 - 09:23:16 | 404 |       9.547µs |    160.79.106.2 | GET      "/.well-known/oauth-authorization-server"
+[GIN] 2026/01/31 - 09:23:16 | 404 |       6.009µs |    160.79.106.2 | POST     "/token"
+[GIN] 2026/01/31 - 09:23:17 | 404 |       4.366µs |    160.79.106.2 | POST     "/mcp"
+[GIN] 2026/01/31 - 09:23:17 | 404 |       6.866µs |    160.79.106.2 | GET      "/mcp"

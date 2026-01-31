@@ -2,12 +2,16 @@ package registry
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/khaar-ai/BotNet/internal/config"
@@ -15,20 +19,43 @@ import (
 	"github.com/khaar-ai/BotNet/pkg/types"
 )
 
+// NeighborNode represents a connected neighbor registry
+type NeighborNode struct {
+	ID       string          `json:"id"`
+	Domain   string          `json:"domain"`
+	URL      string          `json:"url"`
+	Client   *http.Client    `json:"-"`
+	LastSeen time.Time       `json:"last_seen"`
+	Status   string          `json:"status"`
+	Type     string          `json:"type"` // "registry" or "node"
+}
+
 // Service handles registry operations
 type Service struct {
 	storage storage.Storage
 	config  *config.RegistryConfig
 	startTime time.Time
+	
+	// Neighbor registry management
+	neighbors     map[string]*NeighborNode
+	neighborMutex sync.RWMutex
+	maxNeighbors  int
 }
 
 // New creates a new registry service
 func New(storage storage.Storage, config *config.RegistryConfig) *Service {
-	return &Service{
-		storage:   storage,
-		config:    config,
-		startTime: time.Now(),
+	service := &Service{
+		storage:      storage,
+		config:       config,
+		startTime:    time.Now(),
+		neighbors:    make(map[string]*NeighborNode),
+		maxNeighbors: 8, // Maximum 8 neighbor registries
 	}
+	
+	// Start background tasks
+	go service.neighborHealthCheck()
+	
+	return service
 }
 
 // GetInfo returns registry information
@@ -653,4 +680,198 @@ func (s *Service) analyzeAnswerQuality(fullPrompt string) float64 {
 	}
 	
 	return score
+}
+
+// NEIGHBOR REGISTRY MANAGEMENT
+
+// AddNeighbor adds a new neighbor registry with HTTPS connection
+func (s *Service) AddNeighbor(domain, url string) error {
+	s.neighborMutex.Lock()
+	defer s.neighborMutex.Unlock()
+	
+	// Check if we already have this neighbor
+	if _, exists := s.neighbors[domain]; exists {
+		return nil // Already connected
+	}
+	
+	// Check if we've reached max neighbors
+	if len(s.neighbors) >= s.maxNeighbors {
+		return fmt.Errorf("maximum neighbor limit reached (%d)", s.maxNeighbors)
+	}
+	
+	// Create HTTPS client with persistent connections
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // TODO: Implement proper TLS verification
+			},
+			MaxIdleConns:        50,
+			MaxIdleConnsPerHost: 5,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
+	
+	neighbor := &NeighborNode{
+		ID:       s.generateNeighborID(domain),
+		Domain:   domain,
+		URL:      url,
+		Client:   client,
+		LastSeen: time.Now(),
+		Status:   "connecting",
+		Type:     "registry", // Assume registry for now
+	}
+	
+	// Test connection
+	if err := s.pingNeighbor(neighbor); err != nil {
+		return fmt.Errorf("failed to connect to neighbor %s: %w", domain, err)
+	}
+	
+	s.neighbors[domain] = neighbor
+	log.Printf("🔗 Added neighbor registry: %s (%s)", domain, url)
+	
+	return nil
+}
+
+// RemoveNeighbor removes a neighbor registry
+func (s *Service) RemoveNeighbor(domain string) {
+	s.neighborMutex.Lock()
+	defer s.neighborMutex.Unlock()
+	
+	if neighbor, exists := s.neighbors[domain]; exists {
+		neighbor.Status = "disconnected"
+		delete(s.neighbors, domain)
+		log.Printf("🔌 Removed neighbor registry: %s", domain)
+	}
+}
+
+// GetNeighbors returns list of current neighbor registries
+func (s *Service) GetNeighbors() []*NeighborNode {
+	s.neighborMutex.RLock()
+	defer s.neighborMutex.RUnlock()
+	
+	neighbors := make([]*NeighborNode, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		neighbors = append(neighbors, neighbor)
+	}
+	
+	return neighbors
+}
+
+// pingNeighbor tests connection to a neighbor registry
+func (s *Service) pingNeighbor(neighbor *NeighborNode) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	req, err := http.NewRequestWithContext(ctx, "GET", neighbor.URL+"/api/v1/info", nil)
+	if err != nil {
+		return err
+	}
+	
+	resp, err := neighbor.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("neighbor returned status %d", resp.StatusCode)
+	}
+	
+	neighbor.LastSeen = time.Now()
+	neighbor.Status = "connected"
+	
+	return nil
+}
+
+// neighborHealthCheck periodically checks neighbor registry health
+func (s *Service) neighborHealthCheck() {
+	ticker := time.NewTicker(2 * time.Minute) // Check every 2 minutes
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			s.checkAllNeighbors()
+		}
+	}
+}
+
+// checkAllNeighbors pings all neighbor registries
+func (s *Service) checkAllNeighbors() {
+	s.neighborMutex.RLock()
+	neighbors := make([]*NeighborNode, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		neighbors = append(neighbors, neighbor)
+	}
+	s.neighborMutex.RUnlock()
+	
+	for _, neighbor := range neighbors {
+		if err := s.pingNeighbor(neighbor); err != nil {
+			log.Printf("⚠️  Neighbor %s health check failed: %v", neighbor.Domain, err)
+			
+			// Mark as unhealthy if last seen > 10 minutes ago
+			if time.Since(neighbor.LastSeen) > 10*time.Minute {
+				s.RemoveNeighbor(neighbor.Domain)
+			}
+		}
+	}
+}
+
+// sendToNeighbor sends data to a specific neighbor registry
+func (s *Service) sendToNeighbor(neighborDomain string, endpoint string, data interface{}) error {
+	s.neighborMutex.RLock()
+	neighbor, exists := s.neighbors[neighborDomain]
+	s.neighborMutex.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("neighbor %s not found", neighborDomain)
+	}
+	
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	
+	req, err := http.NewRequestWithContext(ctx, "POST", neighbor.URL+endpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Registry-ID", fmt.Sprintf("%s:%d", s.config.Host, s.config.Port))
+	
+	resp, err := neighbor.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("neighbor returned status %d", resp.StatusCode)
+	}
+	
+	neighbor.LastSeen = time.Now()
+	return nil
+}
+
+// broadcastToNeighbors sends data to all connected neighbor registries
+func (s *Service) broadcastToNeighbors(endpoint string, data interface{}) {
+	neighbors := s.GetNeighbors()
+	
+	for _, neighbor := range neighbors {
+		if neighbor.Status == "connected" {
+			if err := s.sendToNeighbor(neighbor.Domain, endpoint, data); err != nil {
+				log.Printf("⚠️  Failed to broadcast to neighbor %s: %v", neighbor.Domain, err)
+			}
+		}
+	}
+}
+
+// generateNeighborID creates a unique ID for a neighbor
+func (s *Service) generateNeighborID(domain string) string {
+	return fmt.Sprintf("neighbor-%s-%d", domain, time.Now().Unix())
 }
