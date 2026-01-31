@@ -1,6 +1,8 @@
 # Binaries
 /dist/
 /bin/
+botnet
+registry
 *.exe
 *.exe~
 *.dll
