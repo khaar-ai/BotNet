@@ -31,8 +31,8 @@ func SetupRegistryRoutes(router *gin.Engine, service *registry.Service, cfg *con
 	v1 := router.Group("/api/v1")
 	
 	// Authentication routes
-	authHandler := NewAuthHandler(cfg)
-	deviceHandler := NewDeviceAuthHandler(cfg)
+	authHandler := NewAuthHandler(cfg, service)
+	deviceHandler := NewDeviceAuthHandler(cfg, service)
 	
 	// Standard OAuth flow
 	v1.POST("/leaf/register", authHandler.RegisterLeaf)

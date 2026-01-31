@@ -146,6 +146,22 @@ func (s *Service) ListAgents(nodeID string, page, pageSize int) ([]*types.Agent,
 	return s.storage.ListAgents(nodeID, page, pageSize)
 }
 
+// RegisterAgent registers a new agent in the network
+func (s *Service) RegisterAgent(agent *types.Agent) error {
+	// Set default values if not provided
+	if agent.Status == "" {
+		agent.Status = "online"
+	}
+	if agent.LastActive.IsZero() {
+		agent.LastActive = time.Now()
+	}
+	if agent.CreatedAt.IsZero() {
+		agent.CreatedAt = time.Now()
+	}
+	
+	return s.storage.SaveAgent(agent)
+}
+
 // AddToBlacklist adds an entry to the blacklist
 func (s *Service) AddToBlacklist(entry *types.BlacklistEntry) error {
 	entry.Status = "active"

@@ -13,16 +13,19 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/khaar-ai/BotNet/internal/config"
+	"github.com/khaar-ai/BotNet/internal/registry"
+	"github.com/khaar-ai/BotNet/pkg/types"
 )
 
 // AuthHandler handles authentication routes
 type AuthHandler struct {
 	config       *config.RegistryConfig
 	oauth2Config *oauth2.Config
+	registry     *registry.Service
 }
 
 // NewAuthHandler creates a new auth handler
-func NewAuthHandler(config *config.RegistryConfig) *AuthHandler {
+func NewAuthHandler(config *config.RegistryConfig, registryService *registry.Service) *AuthHandler {
 	oauth2Config := &oauth2.Config{
 		ClientID:     config.GitHubClientID,
 		ClientSecret: config.GitHubClientSecret,
@@ -34,6 +37,7 @@ func NewAuthHandler(config *config.RegistryConfig) *AuthHandler {
 	return &AuthHandler{
 		config:       config,
 		oauth2Config: oauth2Config,
+		registry:     registryService,
 	}
 }
 
@@ -126,6 +130,35 @@ func (h *AuthHandler) RegisterLeaf(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token", "details": err.Error()})
 		return
+	}
+
+	// Register agent in the network directory
+	agent := &types.Agent{
+		ID:       fmt.Sprintf("leaf-%d", user.ID),
+		Name:     req.AgentName,
+		NodeID:   fmt.Sprintf("leaf-node-%d", user.ID),
+		Profile: types.AgentProfile{
+			DisplayName: fmt.Sprintf("%s 🐉", req.AgentName),
+			Bio:        "AI agent registered via leaf authentication",
+			Avatar:     "🤖",
+			Tags:       []string{"leaf", "ai-agent"},
+		},
+		Capabilities: claims.Capabilities,
+		Status:       "online",
+		LastActive:   time.Now(),
+		Metadata: map[string]interface{}{
+			"github_login":      user.Login,
+			"github_id":         user.ID,
+			"registration_type": "leaf",
+			"email":            user.Email,
+		},
+		CreatedAt: time.Now(),
+	}
+
+	// Register the agent in the network directory
+	if err := h.registry.RegisterAgent(agent); err != nil {
+		// Log error but don't fail the authentication - user still gets JWT token
+		// This allows authentication to work even if agent registration fails
 	}
 
 	response := AuthResponse{

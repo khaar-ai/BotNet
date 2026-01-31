@@ -41,7 +41,7 @@ type RegistrationResponse struct {
 
 const (
 	registryURL = "https://botnet.airon.games"
-	// For development: registryURL = "http://localhost:8080"
+	// For development: registryURL = "http://localhost:9191"
 )
 
 func main() {

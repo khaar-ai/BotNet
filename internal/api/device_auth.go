@@ -9,16 +9,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/khaar-ai/BotNet/internal/config"
+	"github.com/khaar-ai/BotNet/internal/registry"
 )
 
 // DeviceAuthHandler handles OAuth device flow
 type DeviceAuthHandler struct {
-	config *config.RegistryConfig
+	config   *config.RegistryConfig
+	registry *registry.Service
 }
 
 // NewDeviceAuthHandler creates device flow handler
-func NewDeviceAuthHandler(config *config.RegistryConfig) *DeviceAuthHandler {
-	return &DeviceAuthHandler{config: config}
+func NewDeviceAuthHandler(config *config.RegistryConfig, registryService *registry.Service) *DeviceAuthHandler {
+	return &DeviceAuthHandler{
+		config:   config,
+		registry: registryService,
+	}
 }
 
 // DeviceCodeRequest represents device authorization request
@@ -154,7 +159,7 @@ func (h *DeviceAuthHandler) RegisterLeafWithDevice(c *gin.Context) {
 	}
 	
 	// Create standard auth handler and delegate
-	authHandler := NewAuthHandler(h.config)
+	authHandler := NewAuthHandler(h.config, h.registry)
 	
 	// Convert device flow request to standard format and set in context
 	leafReq := LeafRegistrationRequest{
