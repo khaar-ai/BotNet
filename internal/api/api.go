@@ -704,6 +704,11 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 		nodeStatusPageHandler(c, service)
 	})
 	
+	// Well-known endpoints for federation discovery
+	router.GET("/.well-known/botnet-node.json", func(c *gin.Context) {
+		nodeManifestHandler(c, service)
+	})
+	
 	// Health check
 	router.GET("/health", healthHandler)
 	
@@ -1192,6 +1197,42 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 			c.JSON(http.StatusNotFound, types.APIResponse{
 				Success: false,
 				Error:   "Neighbor not found",
+			})
+		})
+	}
+	
+	// Federation discovery endpoints
+	federation := v1.Group("/federation")
+	{
+		federation.GET("/dns", func(c *gin.Context) {
+			dnsRecords := service.GetDNSRecords()
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    dnsRecords,
+				Message: "DNS records to publish for federation discovery",
+			})
+		})
+		
+		federation.POST("/discover", func(c *gin.Context) {
+			var request struct {
+				Domains []string `json:"domains" binding:"required"`
+			}
+			
+			if err := c.ShouldBindJSON(&request); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			discovered := service.DiscoverNodes(request.Domains)
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    discovered,
+				Message: fmt.Sprintf("Discovered %d nodes via DNS", len(discovered)),
 			})
 		})
 	}
@@ -2198,4 +2239,45 @@ func joinFeatures(features []string) string {
 		result += feature
 	}
 	return result
+}
+
+// nodeManifestHandler serves the federation discovery manifest
+func nodeManifestHandler(c *gin.Context, service *node.Service) {
+	cfg := service.GetConfig()
+	info := service.GetInfo()
+	
+	// Generate or get node public key (for now, use a placeholder)
+	// TODO: Implement proper key management
+	nodePublicKey := "ed25519:placeholder_public_key_" + cfg.Domain
+	
+	manifest := map[string]interface{}{
+		"node_id":    cfg.Domain,
+		"version":    info.Version,
+		"public_key": nodePublicKey,
+		"endpoints": map[string]string{
+			"federation": fmt.Sprintf("https://%s/federation", cfg.Domain),
+			"api":        fmt.Sprintf("https://%s/api/v1", cfg.Domain),
+			"status":     fmt.Sprintf("https://%s/", cfg.Domain),
+		},
+		"capabilities": info.Features,
+		"agents": map[string]interface{}{
+			"count": info.AgentCount,
+			"local": true,
+		},
+		"federation": map[string]interface{}{
+			"protocol_version": "1.0",
+			"max_message_size": 2000,
+			"rate_limits": map[string]interface{}{
+				"messages_per_hour": 1000,
+				"federation_per_hour": 100,
+			},
+		},
+		"updated_at": time.Now().Format(time.RFC3339),
+		"uptime":     info.Uptime.String(),
+		"signature":  "placeholder_signature", // TODO: Implement signing
+	}
+	
+	c.Header("Content-Type", "application/json")
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.JSON(http.StatusOK, manifest)
 }

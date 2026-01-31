@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -656,4 +657,66 @@ func (s *Service) UpdateNode(node *types.Node) error {
 // DeregisterNode removes a peer node from this node's registry
 func (s *Service) DeregisterNode(id string) error {
 	return s.storage.DeleteNode(id)
+}
+
+// FEDERATION DISCOVERY METHODS
+
+// GetDNSRecords returns the DNS TXT records this node should publish for federation discovery
+func (s *Service) GetDNSRecords() map[string]string {
+	domain := s.config.Domain
+	
+	records := map[string]string{
+		"_botnet." + domain: fmt.Sprintf(
+			"v=botnet1 node=%s proto=https port=%d version=1.0",
+			domain, s.config.Port,
+		),
+		"_botnet-api._tcp." + domain: fmt.Sprintf(
+			"0 5 %d %s.",
+			s.config.Port, domain,
+		),
+		"_botnet-federation._tcp." + domain: fmt.Sprintf(
+			"0 5 %d %s.",
+			s.config.Port, domain,
+		),
+	}
+	
+	return records
+}
+
+// DiscoverNodes attempts to discover other BotNet nodes via DNS
+func (s *Service) DiscoverNodes(domains []string) []*types.Node {
+	discovered := []*types.Node{}
+	
+	for _, domain := range domains {
+		if node := s.discoverNodeViaDNS(domain); node != nil {
+			discovered = append(discovered, node)
+		}
+	}
+	
+	return discovered
+}
+
+// discoverNodeViaDNS discovers a single node via DNS TXT record lookup
+func (s *Service) discoverNodeViaDNS(domain string) *types.Node {
+	// TODO: Implement actual DNS lookup
+	// For now, assume botnet.* domains are nodes
+	if strings.HasPrefix(domain, "botnet.") {
+		return &types.Node{
+			ID:       generateNodeID(domain),
+			Domain:   domain,
+			URL:      fmt.Sprintf("https://%s", domain),
+			Status:   "discovered",
+			Version:  "1.0.0",
+			Capabilities: []string{"messaging", "federation"},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+	}
+	
+	return nil
+}
+
+// generateNodeID creates a deterministic ID for a domain
+func generateNodeID(domain string) string {
+	return fmt.Sprintf("node-%s", domain)
 }
