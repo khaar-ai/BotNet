@@ -944,7 +944,10 @@ func (s *Service) StartBackgroundTasks(ctx context.Context) {
 	// Agent status updates
 	go s.updateAgentStatus(ctx)
 	
-	log.Println("Background tasks started with context - neighbor health checking active")
+	// Start public key cache cleanup
+	s.publicKeyCache.StartCleanup(ctx)
+	
+	log.Println("Background tasks started with context - all cleanup tasks active")
 }
 
 // registryHeartbeat sends periodic heartbeats to the registry

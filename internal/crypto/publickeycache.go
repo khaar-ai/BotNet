@@ -1,9 +1,11 @@
 package crypto
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -32,10 +34,12 @@ func NewPublicKeyCache(defaultTTL time.Duration) *PublicKeyCache {
 		ttl:   defaultTTL,
 	}
 
-	// Start background cleanup goroutine
-	go cache.cleanup()
-
 	return cache
+}
+
+// StartCleanup starts the background cleanup goroutine with context
+func (pkc *PublicKeyCache) StartCleanup(ctx context.Context) {
+	go pkc.cleanup(ctx)
 }
 
 // Get retrieves a public key from cache
@@ -96,12 +100,15 @@ func (pkc *PublicKeyCache) Size() int {
 }
 
 // cleanup runs periodically to remove expired entries
-func (pkc *PublicKeyCache) cleanup() {
+func (pkc *PublicKeyCache) cleanup(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute) // Cleanup every 5 minutes
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			log.Printf("PublicKeyCache cleanup stopping: %v", ctx.Err())
+			return
 		case <-ticker.C:
 			pkc.removeExpired()
 		}

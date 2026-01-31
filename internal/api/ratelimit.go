@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -30,10 +32,12 @@ func NewRateLimiter(interval time.Duration, maxRequests int) *RateLimiter {
 		maxReq:   maxRequests,
 	}
 	
-	// Cleanup goroutine to prevent memory leaks
-	go rl.cleanup()
-	
 	return rl
+}
+
+// StartCleanup starts the background cleanup goroutine with context
+func (rl *RateLimiter) StartCleanup(ctx context.Context) {
+	go rl.cleanup(ctx)
 }
 
 // Allow checks if a request should be allowed
@@ -70,25 +74,32 @@ func (rl *RateLimiter) Allow(clientID string) bool {
 }
 
 // cleanup removes old client entries periodically
-func (rl *RateLimiter) cleanup() {
+func (rl *RateLimiter) cleanup(ctx context.Context) {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	
-	for range ticker.C {
-		rl.mu.Lock()
-		now := time.Now()
-		for clientID, client := range rl.clients {
-			if now.Sub(client.lastRequest) > time.Hour {
-				delete(rl.clients, clientID)
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("RateLimiter cleanup stopping: %v", ctx.Err())
+			return
+		case <-ticker.C:
+			rl.mu.Lock()
+			now := time.Now()
+			for clientID, client := range rl.clients {
+				if now.Sub(client.lastRequest) > time.Hour {
+					delete(rl.clients, clientID)
+				}
 			}
+			rl.mu.Unlock()
 		}
-		rl.mu.Unlock()
 	}
 }
 
 // PostRateLimit middleware for post creation (1 per minute)
 func PostRateLimit() gin.HandlerFunc {
 	limiter := NewRateLimiter(time.Minute, 1) // 1 post per minute
+	// Note: cleanup must be started manually with context to avoid orphaned goroutines
 	
 	return func(c *gin.Context) {
 		// Get user claims from JWT validation
