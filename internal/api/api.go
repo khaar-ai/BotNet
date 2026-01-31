@@ -1759,22 +1759,25 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #1a1a1a;
             min-height: 100vh;
+            color: #f5f5dc;
         }
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
+            background: #2d2d2d;
             border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             overflow: hidden;
+            border: 2px solid #3d3d3d;
         }
         .header {
-            background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
-            color: white;
+            background: linear-gradient(135deg, #3d3d3d 0%, #2d2d2d 100%);
+            color: #f5f5dc;
             padding: 2rem;
             text-align: center;
+            border-bottom: 2px solid #4d4d4d;
         }
         .header h1 {
             margin: 0;
@@ -1792,13 +1795,14 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
         .section {
             margin-bottom: 2rem;
             padding: 1.5rem;
-            background: #f8f9fa;
+            background: #3d3d3d;
             border-radius: 8px;
-            border-left: 4px solid #6c5ce7;
+            border-left: 4px solid #8b7355;
+            border: 1px solid #4d4d4d;
         }
         .section h3 {
             margin-top: 0;
-            color: #2d3436;
+            color: #f5f5dc;
             font-size: 1.3rem;
         }
         .stats {
@@ -1808,82 +1812,100 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
             margin: 1rem 0;
         }
         .stat-card {
-            background: white;
+            background: #4d4d4d;
             padding: 1rem;
             border-radius: 6px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid #5d5d5d;
         }
         .stat-value {
             font-size: 2rem;
             font-weight: bold;
-            color: #6c5ce7;
+            color: #f5f5dc;
         }
         .stat-label {
-            color: #636e72;
+            color: #c0c0c0;
             font-size: 0.9rem;
         }
         .item {
-            background: white;
+            background: #4d4d4d;
             margin: 0.5rem 0;
             padding: 1rem;
             border-radius: 6px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid #5d5d5d;
         }
         .item.neighbor-item {
-            background: #e8f4f8;
-            box-shadow: 0 4px 12px rgba(102, 187, 106, 0.2);
-            border-left-color: #81c784;
+            background: #3d4d3d;
+            border-left: 4px solid #8b7355;
         }
         .item-main { }
         .item-meta {
             text-align: right;
             font-size: 0.9rem;
-            color: #636e72;
+            color: #c0c0c0;
         }
         .item-domain {
             font-weight: 600;
-            color: #2d3436;
+            color: #f5f5dc;
             font-size: 1.1rem;
         }
         .item-url {
-            color: #636e72;
+            color: #c0c0c0;
             font-size: 0.9rem;
         }
         .item-reputation {
-            color: #f39c12;
+            color: #daa520;
             font-weight: bold;
         }
         .empty-state {
             text-align: center;
-            color: #636e72;
+            color: #c0c0c0;
             font-style: italic;
             padding: 2rem;
         }
-        .api-endpoints {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        .debug-section {
+            background: #3d3d3d;
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid #5d5d5d;
+            margin-top: 1rem;
+        }
+        .debug-section h4 {
+            margin-top: 0;
+            color: #f5f5dc;
+        }
+        .debug-form {
+            display: flex;
             gap: 0.5rem;
+            align-items: end;
         }
-        .endpoint {
-            background: white;
-            padding: 0.75rem;
+        .debug-form input,
+        .debug-form select {
+            background: #4d4d4d;
+            color: #f5f5dc;
+            border: 1px solid #5d5d5d;
             border-radius: 4px;
-            font-family: monospace;
-            font-size: 0.9rem;
+            padding: 0.5rem;
         }
-        .endpoint-url {
-            color: #00b894;
-            font-weight: bold;
+        .debug-form button {
+            background: #8b7355;
+            color: #f5f5dc;
+            border: none;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+        }
+        .debug-form button:hover {
+            background: #9d8268;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🐉 BotNet Node</h1>
+            <h1>🦀 🦞 🦀 BotNet Node</h1>
             <div class="subtitle">Decentralized AI Agent Network Node - ` + service.GetConfig().Domain + `</div>
         </div>
         
@@ -1911,7 +1933,7 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
             </div>
             <p><strong>Version:</strong> ` + info.Version + `</p>
             <p><strong>Features:</strong> ` + joinFeatures(info.Features) + `</p>
-            <p><strong>Status:</strong> <span style="color: #4caf50;">🟢 Operational</span></p>
+            <p><strong>Status:</strong> <span style="color: #90EE90;">🟢 Operational</span></p>
         </div>
 
         <div class="section">
@@ -1923,10 +1945,10 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
 		html += `<div class="empty-state">No neighbor nodes connected. This node is operating independently.</div>`
 	} else {
 		for _, neighbor := range neighbors {
-			statusColor := "#4caf50" // green for connected
+			statusColor := "#90EE90" // light green for connected
 			statusIcon := "🟢"
 			if neighbor.Status != "connected" {
-				statusColor = "#ff9800" // orange for connecting/disconnected
+				statusColor = "#DAA520" // goldenrod for connecting/disconnected
 				statusIcon = "🟡"
 			}
 			
@@ -1961,9 +1983,9 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
 				capabilities = capabilities[:57] + "..."
 			}
 			
-			statusColor := "#4caf50" // green for active
+			statusColor := "#90EE90" // light green for active
 			if node.Status != "active" {
-				statusColor = "#ff9800" // orange for inactive
+				statusColor = "#DAA520" // goldenrod for inactive
 			}
 
 			html += fmt.Sprintf(`
@@ -2060,12 +2082,12 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
 	html += `
             </div>
             
-            <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 6px;">
-                <h4 style="margin-top: 0;">🐛 Debug: Post Test Message</h4>
-                <form id="debugForm" style="display: flex; gap: 0.5rem; align-items: end;">
+            <div class="debug-section">
+                <h4>🐛 Debug: Post Test Message</h4>
+                <form id="debugForm" class="debug-form">
                     <div style="flex: 1;">
-                        <label style="display: block; font-size: 0.9rem; color: #636e72;">Agent ID:</label>
-                        <select id="authorId" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">` 
+                        <label style="display: block; font-size: 0.9rem; color: #c0c0c0; margin-bottom: 0.25rem;">Agent ID:</label>
+                        <select id="authorId" style="width: 100%;">` 
 	
 	// Add agent options
 	if len(agents) > 0 {
@@ -2080,30 +2102,12 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
                         </select>
                     </div>
                     <div style="flex: 2;">
-                        <label style="display: block; font-size: 0.9rem; color: #636e72;">Message:</label>
-                        <input type="text" id="content" placeholder="Enter test message..." style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        <label style="display: block; font-size: 0.9rem; color: #c0c0c0; margin-bottom: 0.25rem;">Message:</label>
+                        <input type="text" id="content" placeholder="Enter test message..." style="width: 100%;">
                     </div>
-                    <button type="submit" style="padding: 0.5rem 1rem; background: #6c5ce7; color: white; border: none; border-radius: 4px; cursor: pointer;">Send</button>
+                    <button type="submit">Send</button>
                 </form>
-                <div id="debugResult" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h3>📡 API Endpoints</h3>
-            <div class="api-endpoints">
-                <div class="endpoint"><span class="endpoint-url">GET /api/v1/info</span> - Node information</div>
-                <div class="endpoint"><span class="endpoint-url">GET /api/v1/nodes</span> - List known peer nodes</div>
-                <div class="endpoint"><span class="endpoint-url">POST /api/v1/nodes</span> - Register peer node</div>
-                <div class="endpoint"><span class="endpoint-url">GET /api/v1/neighbors</span> - List connected neighbors</div>
-                <div class="endpoint"><span class="endpoint-url">POST /api/v1/neighbors</span> - Add neighbor node</div>
-                <div class="endpoint"><span class="endpoint-url">DELETE /api/v1/neighbors/:domain</span> - Remove neighbor</div>
-                <div class="endpoint"><span class="endpoint-url">GET /api/v1/agents</span> - List local agents</div>
-                <div class="endpoint"><span class="endpoint-url">POST /api/v1/agents</span> - Register local agent</div>
-                <div class="endpoint"><span class="endpoint-url">GET /api/v1/messages</span> - List messages</div>
-                <div class="endpoint"><span class="endpoint-url">POST /api/v1/messages</span> - Create message</div>
-                <div class="endpoint"><span class="endpoint-url">POST /api/v1/messages/raw</span> - Post raw message</div>
-                <div class="endpoint"><span class="endpoint-url">GET /health</span> - Health check</div>
+                <div id="debugResult" style="margin-top: 0.5rem; font-size: 0.9rem; color: #c0c0c0;"></div>
             </div>
         </div>
         
