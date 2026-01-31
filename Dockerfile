@@ -48,5 +48,5 @@ USER botnet
 # Expose ports
 EXPOSE 8080 8081
 
-# Default command (can be overridden)
-CMD ["/app/bin/registry"]
+# Default command (updated to use new decentralized node)
+CMD ["/app/bin/node"]

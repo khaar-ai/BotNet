@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/khaar-ai/BotNet/internal/config"
+	"github.com/khaar-ai/BotNet/internal/discovery"
 	"github.com/khaar-ai/BotNet/internal/storage"
 	"github.com/khaar-ai/BotNet/pkg/types"
 )
@@ -38,6 +38,9 @@ type Service struct {
 	localStorage  storage.Storage  // Local agents and messages only
 	// TODO: Add neighborStore for neighbor metadata
 	
+	// Discovery and federation
+	discovery     *discovery.DNSService
+	
 	// Configuration
 	config    *config.NodeConfig
 	startTime time.Time
@@ -49,12 +52,13 @@ type Service struct {
 }
 
 // New creates a new decentralized node service
-func New(localStorage storage.Storage, config *config.NodeConfig) *Service {
+func New(localStorage storage.Storage, discovery *discovery.DNSService, config *config.NodeConfig) *Service {
 	service := &Service{
 		nodeID:       config.NodeID,
 		domain:       config.Domain, 
 		capabilities: config.Capabilities,
 		localStorage: localStorage,
+		discovery:    discovery,
 		config:       config,
 		startTime:    time.Now(),
 		neighbors:    make(map[string]*NeighborNode),
@@ -73,10 +77,15 @@ func (s *Service) Start() error {
 		return fmt.Errorf("failed to initialize identity: %v", err)
 	}
 	
-	// 2. Start background neighbor discovery
+	// 2. Publish our node manifest for discovery
+	if err := s.publishNodeManifest(); err != nil {
+		log.Printf("Warning: Failed to publish node manifest: %v", err)
+	}
+	
+	// 3. Start background neighbor discovery
 	go s.discoverNeighbors()
 	
-	// 3. Start neighbor health monitoring
+	// 4. Start neighbor health monitoring
 	go s.neighborHealthCheck()
 	
 	log.Printf("Node %s started successfully", s.nodeID)
@@ -90,28 +99,75 @@ func (s *Service) initializeIdentity() error {
 	return nil
 }
 
-// discoverNeighbors performs initial peer discovery from bootstrap seeds
-func (s *Service) discoverNeighbors() {
-	log.Printf("Starting neighbor discovery for %s", s.nodeID)
+// publishNodeManifest publishes this node's manifest for DNS discovery
+func (s *Service) publishNodeManifest() error {
+	// Create our node manifest
+	manifest := &types.NodeManifest{
+		NodeID:    s.nodeID,
+		Version:   "1.0.0",
+		PublicKey: fmt.Sprintf("ed25519:placeholder_%s", s.domain), // TODO: Real keys
+		Endpoints: types.NodeEndpoints{
+			Federation: fmt.Sprintf("https://%s/federation", s.domain),
+			API:        fmt.Sprintf("https://%s/api/v1", s.domain),
+			WebUI:      fmt.Sprintf("https://%s/", s.domain),
+		},
+		Capabilities: s.capabilities,
+		RateLimit: types.RateLimitInfo{
+			MessagesPerHour:   s.config.MessagesPerHour,
+			FederationPerHour: s.config.FederationPerHour,
+		},
+		Signature: "TODO:implement_signature",
+		UpdatedAt: time.Now(),
+	}
 	
-	for _, seed := range s.config.Bootstrap.Seeds {
-		log.Printf("Attempting to discover neighbor: %s", seed)
+	// Set manifest in discovery service
+	s.discovery.SetManifest(manifest)
+	
+	// Publish DNS TXT record
+	return s.discovery.PublishNodeRecord()
+}
+
+// discoverNeighbors performs DNS-based peer discovery from bootstrap seeds
+func (s *Service) discoverNeighbors() {
+	log.Printf("Starting DNS-based neighbor discovery for %s", s.nodeID)
+	
+	if len(s.config.Bootstrap.Seeds) == 0 {
+		log.Printf("No bootstrap seeds configured for discovery")
+		return
+	}
+	
+	// Use DNS discovery to find neighbor nodes
+	manifests, err := s.discovery.DiscoverNodes(s.config.Bootstrap.Seeds)
+	if err != nil {
+		log.Printf("DNS discovery failed: %v", err)
+		return
+	}
+	
+	// Add discovered neighbors
+	for _, manifest := range manifests {
+		// Don't add ourselves as a neighbor
+		if manifest.NodeID == s.nodeID {
+			continue
+		}
 		
-		// TODO: Implement DNS TXT record lookup and manifest fetching
-		// For now, add neighbor using domain and URL
-		neighborURL := fmt.Sprintf("https://botnet.%s", seed)
+		neighborURL := manifest.Endpoints.API
+		if neighborURL == "" {
+			neighborURL = manifest.Endpoints.WebUI
+		}
 		
-		if err := s.AddNeighbor(seed, neighborURL); err != nil {
-			log.Printf("Failed to add neighbor %s: %v", seed, err)
+		if err := s.AddNeighbor(manifest.NodeID, neighborURL); err != nil {
+			log.Printf("Failed to add discovered neighbor %s: %v", manifest.NodeID, err)
+		} else {
+			log.Printf("Successfully added neighbor: %s", manifest.NodeID)
 		}
 	}
 	
-	log.Printf("Neighbor discovery completed. Found %d neighbors", len(s.neighbors))
+	log.Printf("DNS neighbor discovery completed. Found %d neighbors", len(s.neighbors))
 }
 
 // GetNodeInfo returns information about this node only (decentralized)
 func (s *Service) GetNodeInfo() *types.NodeInfo {
-	agents, _, _ := s.localStorage.ListAgents("", 1, 1000) // Get local agents only
+	agents, _, _ := s.localStorage.ListAgents(s.nodeID, 1, 1000) // Get local agents only
 	
 	s.neighborMutex.RLock()
 	neighborCount := len(s.neighbors)
@@ -149,7 +205,7 @@ func (s *Service) getLastNeighborSync() time.Time {
 
 // GetNetworkInfo returns an aggregated view by querying neighbors (estimates)
 func (s *Service) GetNetworkInfo() *types.NetworkInfo {
-	localAgents, _, _ := s.localStorage.ListAgents("", 1, 1000)
+	localAgents, _, _ := s.localStorage.ListAgents(s.nodeID, 1, 1000)
 	totalAgents := len(localAgents)
 	totalNodes := 1 // This node
 	
@@ -178,6 +234,171 @@ func (s *Service) GetNetworkInfo() *types.NetworkInfo {
 	}
 }
 
+// GetFederatedAgents returns all agents visible to this node (local + neighbors)
+func (s *Service) GetFederatedAgents() ([]*types.Agent, error) {
+	var allAgents []*types.Agent
+	
+	// Include local agents
+	localAgents, _, err := s.localStorage.ListAgents(s.nodeID, 1, 1000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get local agents: %v", err)
+	}
+	allAgents = append(allAgents, localAgents...)
+	log.Printf("Federation: Found %d local agents", len(localAgents))
+	
+	// Query neighbor nodes for their agents via federation API
+	s.neighborMutex.RLock()
+	neighbors := make([]*NeighborNode, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		if neighbor.Status == "active" {
+			neighbors = append(neighbors, neighbor)
+		}
+	}
+	s.neighborMutex.RUnlock()
+	
+	if len(neighbors) == 0 {
+		log.Printf("Federation: No active neighbors to query for agents")
+		return allAgents, nil
+	}
+	
+	log.Printf("Federation: Querying %d active neighbors for their agents", len(neighbors))
+	
+	// Query each neighbor in parallel
+	type neighborResult struct {
+		nodeID string
+		agents []*types.Agent
+		err    error
+	}
+	
+	resultChan := make(chan neighborResult, len(neighbors))
+	
+	for _, neighbor := range neighbors {
+		go func(n *NeighborNode) {
+			agents, err := s.queryNeighborAgents(n)
+			resultChan <- neighborResult{
+				nodeID: n.ID,
+				agents: agents,
+				err:    err,
+			}
+		}(neighbor)
+	}
+	
+	// Collect results
+	for i := 0; i < len(neighbors); i++ {
+		result := <-resultChan
+		if result.err != nil {
+			log.Printf("Federation: Failed to query agents from %s: %v", result.nodeID, result.err)
+			continue
+		}
+		
+		log.Printf("Federation: Received %d agents from neighbor %s", len(result.agents), result.nodeID)
+		allAgents = append(allAgents, result.agents...)
+	}
+	
+	log.Printf("Federation: Total federated agents: %d (local: %d, neighbors: %d)", 
+		len(allAgents), len(localAgents), len(allAgents)-len(localAgents))
+	
+	return allAgents, nil
+}
+
+// queryNeighborAgents queries a specific neighbor node for its agents
+func (s *Service) queryNeighborAgents(neighbor *NeighborNode) ([]*types.Agent, error) {
+	// Construct API endpoint URL for neighbor
+	agentsURL := fmt.Sprintf("%s/api/v1/agents", neighbor.URL)
+	
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // TODO: Proper TLS verification
+		},
+	}
+	
+	// Create request
+	req, err := http.NewRequest("GET", agentsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", fmt.Sprintf("BotNet-Node/%s", s.nodeID))
+	// TODO: Add authentication headers for federation
+	
+	// Send request
+	resp, err := client.Do(req)
+	if err != nil {
+		s.markNeighborUnhealthy(neighbor)
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("neighbor returned status %d", resp.StatusCode)
+	}
+	
+	// Parse response
+	var apiResponse types.APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	
+	if !apiResponse.Success {
+		return nil, fmt.Errorf("neighbor API error: %s", apiResponse.Error)
+	}
+	
+	// Extract paginated response data
+	var paginatedResp types.PaginatedResponse
+	dataBytes, err := json.Marshal(apiResponse.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal response data: %w", err)
+	}
+	
+	if err := json.Unmarshal(dataBytes, &paginatedResp); err != nil {
+		return nil, fmt.Errorf("failed to parse paginated response: %w", err)
+	}
+	
+	// Extract agents from paginated data
+	var agents []*types.Agent
+	agentsBytes, err := json.Marshal(paginatedResp.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal agents data: %w", err)
+	}
+	
+	if err := json.Unmarshal(agentsBytes, &agents); err != nil {
+		return nil, fmt.Errorf("failed to parse agents: %w", err)
+	}
+	
+	// Mark neighbor as healthy since request succeeded
+	neighbor.LastSeen = time.Now()
+	neighbor.Status = "active"
+	
+	return agents, nil
+}
+
+// DiscoverNodes returns recently discovered nodes via DNS
+func (s *Service) DiscoverNodes() ([]*types.NodeManifest, error) {
+	if len(s.config.Bootstrap.Seeds) == 0 {
+		return []*types.NodeManifest{}, nil
+	}
+	
+	// Perform fresh DNS discovery
+	manifests, err := s.discovery.DiscoverNodes(s.config.Bootstrap.Seeds)
+	if err != nil {
+		return nil, fmt.Errorf("DNS discovery failed: %v", err)
+	}
+	
+	log.Printf("Discovery: Found %d nodes via DNS", len(manifests))
+	return manifests, nil
+}
+
+// GetNodeManifest returns this node's manifest
+func (s *Service) GetNodeManifest() *types.NodeManifest {
+	if s.discovery == nil {
+		return nil
+	}
+	return s.discovery.GetManifest()
+}
+
 // GetConfig returns the node configuration
 func (s *Service) GetConfig() *config.NodeConfig {
 	return s.config
@@ -185,16 +406,25 @@ func (s *Service) GetConfig() *config.NodeConfig {
 
 // TODO: Removed RegisterWithRegistry - using decentralized approach now
 
-// RegisterAgent registers a new agent on this node
+// RegisterAgent registers a new agent on this node (legacy method)
 func (s *Service) RegisterAgent(agent *types.Agent) error {
-	agent.NodeID = s.config.NodeID
+	return s.RegisterLocalAgent(agent)
+}
+
+// RegisterLocalAgent registers a new agent locally on this node
+func (s *Service) RegisterLocalAgent(agent *types.Agent) error {
+	// Ensure agent is registered to this node
+	agent.NodeID = s.nodeID
 	agent.Status = "online"
 	agent.LastActive = time.Now()
+	agent.CreatedAt = time.Now()
 	
+	// Set default capabilities if none provided
 	if agent.Capabilities == nil {
 		agent.Capabilities = []string{"messaging", "challenges"}
 	}
 	
+	log.Printf("Registering local agent '%s' to node %s", agent.Name, s.nodeID)
 	return s.localStorage.SaveAgent(agent)
 }
 
@@ -204,8 +434,20 @@ func (s *Service) GetAgent(id string) (*types.Agent, error) {
 }
 
 // ListAgents returns a paginated list of agents on this node
+// ListAgents lists local agents on this node (node-local only)
 func (s *Service) ListAgents(page, pageSize int) ([]*types.Agent, int64, error) {
-	return s.localStorage.ListAgents(s.config.NodeID, page, pageSize)
+	return s.GetLocalAgents(page, pageSize)
+}
+
+// GetLocalAgents returns agents registered to this specific node
+func (s *Service) GetLocalAgents(page, pageSize int) ([]*types.Agent, int64, error) {
+	agents, total, err := s.localStorage.ListAgents(s.nodeID, page, pageSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get local agents: %v", err)
+	}
+	
+	log.Printf("Node %s: Found %d local agents", s.nodeID, len(agents))
+	return agents, total, nil
 }
 
 // PostMessage posts a message to the network
@@ -429,11 +671,81 @@ func (s *Service) updateAgentStatus() {
 
 // replicateMessage replicates a message to other nodes (placeholder)
 func (s *Service) federateMessage(message *types.Message) {
-	// TODO: Implement message replication to other nodes
-	// This would involve:
-	// 1. Getting list of peer nodes from registry
-	// 2. Sending the message to relevant nodes
-	// 3. Handling replication conflicts and consensus
+	s.neighborMutex.RLock()
+	neighbors := make([]*NeighborNode, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		if neighbor.Status == "active" {
+			neighbors = append(neighbors, neighbor)
+		}
+	}
+	s.neighborMutex.RUnlock()
+	
+	if len(neighbors) == 0 {
+		log.Printf("Federation: No active neighbors to federate message to")
+		return
+	}
+	
+	log.Printf("Federation: Sending message to %d neighbors", len(neighbors))
+	
+	for _, neighbor := range neighbors {
+		go s.sendMessageToNeighbor(neighbor, message)
+	}
+}
+
+// sendMessageToNeighbor sends a message to a specific neighbor node
+func (s *Service) sendMessageToNeighbor(neighbor *NeighborNode, message *types.Message) {
+	// Construct federation endpoint URL
+	federationURL := fmt.Sprintf("%s/federation/messages", neighbor.URL)
+	
+	// Marshal message to JSON
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Federation: Failed to marshal message for %s: %v", neighbor.ID, err)
+		return
+	}
+	
+	// Create HTTP request
+	req, err := http.NewRequest("POST", federationURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Federation: Failed to create request to %s: %v", neighbor.ID, err)
+		return
+	}
+	
+	req.Header.Set("Content-Type", "application/json")
+	// TODO: Add authentication headers for federation
+	
+	// Send request
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Federation: Failed to send message to %s: %v", neighbor.ID, err)
+		s.markNeighborUnhealthy(neighbor)
+		return
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode == http.StatusOK {
+		log.Printf("Federation: Successfully sent message to %s", neighbor.ID)
+		s.markNeighborHealthy(neighbor)
+	} else {
+		log.Printf("Federation: Neighbor %s returned status %d", neighbor.ID, resp.StatusCode)
+		s.markNeighborUnhealthy(neighbor)
+	}
+}
+
+// markNeighborHealthy updates neighbor status to healthy
+func (s *Service) markNeighborHealthy(neighbor *NeighborNode) {
+	s.neighborMutex.Lock()
+	defer s.neighborMutex.Unlock()
+	neighbor.Status = "active"
+	neighbor.LastSeen = time.Now()
+}
+
+// markNeighborUnhealthy updates neighbor status to unhealthy
+func (s *Service) markNeighborUnhealthy(neighbor *NeighborNode) {
+	s.neighborMutex.Lock()
+	defer s.neighborMutex.Unlock()
+	neighbor.Status = "inactive"
 }
 
 // ProcessIncomingMessage processes a message received from another node
@@ -524,6 +836,18 @@ func (s *Service) GetNeighbors() []*NeighborNode {
 	}
 	
 	return neighbors
+}
+
+// GetNeighbor returns a specific neighbor by ID
+func (s *Service) GetNeighbor(nodeID string) *NeighborNode {
+	s.neighborMutex.RLock()
+	defer s.neighborMutex.RUnlock()
+	
+	if neighbor, exists := s.neighbors[nodeID]; exists {
+		return neighbor
+	}
+	
+	return nil
 }
 
 // pingNeighbor tests connection to a neighbor node
@@ -733,42 +1057,4 @@ func (s *Service) GetDNSRecords() map[string]string {
 	}
 	
 	return records
-}
-
-// DiscoverNodes attempts to discover other BotNet nodes via DNS
-func (s *Service) DiscoverNodes(domains []string) []*types.Node {
-	discovered := []*types.Node{}
-	
-	for _, domain := range domains {
-		if node := s.discoverNodeViaDNS(domain); node != nil {
-			discovered = append(discovered, node)
-		}
-	}
-	
-	return discovered
-}
-
-// discoverNodeViaDNS discovers a single node via DNS TXT record lookup
-func (s *Service) discoverNodeViaDNS(domain string) *types.Node {
-	// TODO: Implement actual DNS lookup
-	// For now, assume botnet.* domains are nodes
-	if strings.HasPrefix(domain, "botnet.") {
-		return &types.Node{
-			ID:       generateNodeID(domain),
-			Domain:   domain,
-			URL:      fmt.Sprintf("https://%s", domain),
-			Status:   "discovered",
-			Version:  "1.0.0",
-			Capabilities: []string{"messaging", "federation"},
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-	}
-	
-	return nil
-}
-
-// generateNodeID creates a deterministic ID for a domain
-func generateNodeID(domain string) string {
-	return fmt.Sprintf("node-%s", domain)
 }

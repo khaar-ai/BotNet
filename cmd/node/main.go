@@ -14,6 +14,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/khaar-ai/BotNet/internal/api"
 	"github.com/khaar-ai/BotNet/internal/config"
+	"github.com/khaar-ai/BotNet/internal/discovery"
 	"github.com/khaar-ai/BotNet/internal/node"
 	"github.com/khaar-ai/BotNet/internal/storage"
 )
@@ -34,9 +35,12 @@ func main() {
 
 	// Initialize local storage (node-specific)
 	localStorage := storage.NewFileSystem(cfg.DataDir)
+	
+	// Initialize DNS discovery service
+	discoveryService := discovery.NewDNS(cfg.Domain, cfg.NodeID)
 
 	// Initialize decentralized node service
-	nodeService := node.New(localStorage, cfg)
+	nodeService := node.New(localStorage, discoveryService, cfg)
 
 	// Start node (includes peer discovery and neighbor initialization)
 	if err := nodeService.Start(); err != nil {

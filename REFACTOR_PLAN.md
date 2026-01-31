@@ -699,12 +699,12 @@ curl http://localhost:8080/.well-known/botnet-node.json | jq
 - [ ] Add basic DNS discovery service
 - [ ] Update configuration structs
 
-### **Session 2 (2-3 hours): Federation Logic** 
-- [ ] Implement node manifest endpoint
-- [ ] Add DNS TXT record publishing/querying
-- [ ] Refactor message federation model
-- [ ] Update agent registration to be node-local
-- [ ] Remove global storage dependencies
+### **Session 2 (2-3 hours): Federation Logic** ✅ COMPLETED
+- [✅] Implement node manifest endpoint
+- [✅] Add DNS TXT record publishing/querying
+- [✅] Refactor message federation model
+- [✅] Update agent registration to be node-local
+- [✅] Remove global storage dependencies
 
 ### **Session 3 (1-2 hours): Testing & Validation**
 - [ ] Update main applications (cmd/node, CLI)

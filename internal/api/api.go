@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -329,126 +330,7 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 		})
 	}
 	
-	// Peer registry management (this node acts as its own registry)
-	nodes := v1.Group("/nodes")
-	{
-		nodes.GET("", func(c *gin.Context) {
-			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-			pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-			
-			nodeList, total, err := service.ListNodes(page, pageSize)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, types.APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-				return
-			}
-			
-			totalPages := (int(total) + pageSize - 1) / pageSize
-			
-			c.JSON(http.StatusOK, types.APIResponse{
-				Success: true,
-				Data: types.PaginatedResponse{
-					Data:       nodeList,
-					Page:       page,
-					PageSize:   pageSize,
-					Total:      total,
-					TotalPages: totalPages,
-				},
-			})
-		})
-		
-		nodes.POST("", func(c *gin.Context) {
-			var node types.Node
-			if err := c.ShouldBindJSON(&node); err != nil {
-				c.JSON(http.StatusBadRequest, types.APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-				return
-			}
-			
-			if err := service.RegisterNode(&node); err != nil {
-				c.JSON(http.StatusInternalServerError, types.APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-				return
-			}
-			
-			c.JSON(http.StatusCreated, types.APIResponse{
-				Success: true,
-				Data:    node,
-				Message: "Peer node registered successfully",
-			})
-		})
-		
-		nodes.GET("/:id", func(c *gin.Context) {
-			id := c.Param("id")
-			
-			node, err := service.GetNode(id)
-			if err != nil {
-				c.JSON(http.StatusNotFound, types.APIResponse{
-					Success: false,
-					Error:   "Peer node not found",
-				})
-				return
-			}
-			
-			c.JSON(http.StatusOK, types.APIResponse{
-				Success: true,
-				Data:    node,
-			})
-		})
-		
-		nodes.PUT("/:id", func(c *gin.Context) {
-			id := c.Param("id")
-			
-			var node types.Node
-			if err := c.ShouldBindJSON(&node); err != nil {
-				c.JSON(http.StatusBadRequest, types.APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-				return
-			}
-			
-			node.ID = id
-			if err := service.UpdateNode(&node); err != nil {
-				c.JSON(http.StatusInternalServerError, types.APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-				return
-			}
-			
-			c.JSON(http.StatusOK, types.APIResponse{
-				Success: true,
-				Data:    node,
-				Message: "Peer node updated successfully",
-			})
-		})
-		
-		nodes.DELETE("/:id", func(c *gin.Context) {
-			id := c.Param("id")
-			
-			if err := service.DeregisterNode(id); err != nil {
-				c.JSON(http.StatusInternalServerError, types.APIResponse{
-					Success: false,
-					Error:   err.Error(),
-				})
-				return
-			}
-			
-			c.JSON(http.StatusOK, types.APIResponse{
-				Success: true,
-				Message: "Peer node deregistered successfully",
-			})
-		})
-	}
-	
-	// Neighbor management for peer-to-peer networking
+	// Neighbor management (decentralized - direct neighbors only)
 	neighbors := v1.Group("/neighbors")
 	{
 		neighbors.GET("", func(c *gin.Context) {
@@ -457,16 +339,17 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 			c.JSON(http.StatusOK, types.APIResponse{
 				Success: true,
 				Data:    neighborList,
+				Message: fmt.Sprintf("Found %d active neighbors", len(neighborList)),
 			})
 		})
 		
 		neighbors.POST("", func(c *gin.Context) {
-			var request struct {
-				Domain string `json:"domain" binding:"required"`
+			var neighbor struct {
+				NodeID string `json:"node_id" binding:"required"`
 				URL    string `json:"url" binding:"required"`
 			}
 			
-			if err := c.ShouldBindJSON(&request); err != nil {
+			if err := c.ShouldBindJSON(&neighbor); err != nil {
 				c.JSON(http.StatusBadRequest, types.APIResponse{
 					Success: false,
 					Error:   err.Error(),
@@ -474,80 +357,102 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 				return
 			}
 			
-			// Validate URL format
-			if !strings.HasPrefix(request.URL, "http://") && !strings.HasPrefix(request.URL, "https://") {
-				c.JSON(http.StatusBadRequest, types.APIResponse{
-					Success: false,
-					Error:   "URL must start with http:// or https://",
-				})
-				return
-			}
-			
-			if err := service.AddNeighbor(request.Domain, request.URL); err != nil {
+			if err := service.AddNeighbor(neighbor.NodeID, neighbor.URL); err != nil {
 				c.JSON(http.StatusInternalServerError, types.APIResponse{
 					Success: false,
 					Error:   err.Error(),
 				})
 				return
 			}
-			
+
 			c.JSON(http.StatusCreated, types.APIResponse{
 				Success: true,
-				Message: fmt.Sprintf("Neighbor %s added successfully", request.Domain),
+				Message: fmt.Sprintf("Neighbor %s added successfully", neighbor.NodeID),
 			})
 		})
 		
-		neighbors.DELETE("/:domain", func(c *gin.Context) {
-			domain := c.Param("domain")
+		neighbors.GET("/:id", func(c *gin.Context) {
+			id := c.Param("id")
 			
-			service.RemoveNeighbor(domain)
+			neighbor := service.GetNeighbor(id)
+			if neighbor == nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Neighbor not found",
+				})
+				return
+			}
 			
 			c.JSON(http.StatusOK, types.APIResponse{
 				Success: true,
-				Message: fmt.Sprintf("Neighbor %s removed successfully", domain),
+				Data:    neighbor,
 			})
 		})
 		
-		neighbors.GET("/:domain/status", func(c *gin.Context) {
-			domain := c.Param("domain")
+		neighbors.DELETE("/:id", func(c *gin.Context) {
+			id := c.Param("id")
 			
-			neighborList := service.GetNeighbors()
-			for _, neighbor := range neighborList {
-				if neighbor.Domain == domain {
-					c.JSON(http.StatusOK, types.APIResponse{
-						Success: true,
-						Data:    neighbor,
-					})
-					return
-				}
+			// Check if neighbor exists before removing
+			neighbor := service.GetNeighbor(id)
+			if neighbor == nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Neighbor not found",
+				})
+				return
 			}
 			
-			c.JSON(http.StatusNotFound, types.APIResponse{
-				Success: false,
-				Error:   "Neighbor not found",
+			service.RemoveNeighbor(id)
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Message: fmt.Sprintf("Neighbor %s removed successfully", id),
 			})
 		})
 	}
+	// Duplicate neighbor group removed - using first group instead
 	
-	// Federation discovery endpoints
+	// Federation API endpoints
 	federation := v1.Group("/federation")
 	{
-		federation.GET("/dns", func(c *gin.Context) {
-			dnsRecords := service.GetDNSRecords()
-			
+		// Discover peer nodes via DNS
+		federation.GET("/discover", func(c *gin.Context) {
+			nodes, err := service.DiscoverNodes()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
 			c.JSON(http.StatusOK, types.APIResponse{
 				Success: true,
-				Data:    dnsRecords,
-				Message: "DNS records to publish for federation discovery",
+				Data:    nodes,
+				Message: fmt.Sprintf("Discovered %d nodes via DNS", len(nodes)),
 			})
 		})
 		
-		federation.POST("/discover", func(c *gin.Context) {
-			var request struct {
-				Domains []string `json:"domains" binding:"required"`
+		// Get federated view of all agents (local + neighbors)
+		federation.GET("/agents", func(c *gin.Context) {
+			agents, err := service.GetFederatedAgents()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
 			}
-			
-			if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    agents,
+				Message: fmt.Sprintf("Found %d federated agents", len(agents)),
+			})
+		})
+		
+		// Federation message exchange endpoint (for receiving from neighbors)
+		federation.POST("/messages", func(c *gin.Context) {
+			var message types.Message
+			if err := c.ShouldBindJSON(&message); err != nil {
 				c.JSON(http.StatusBadRequest, types.APIResponse{
 					Success: false,
 					Error:   err.Error(),
@@ -555,12 +460,19 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 				return
 			}
 			
-			discovered := service.DiscoverNodes(request.Domains)
+			// Process incoming federated message
+			if err := service.ProcessIncomingMessage(&message); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   fmt.Sprintf("Failed to process federated message: %v", err),
+				})
+				return
+			}
 			
+			log.Printf("Federation: Received and processed message from %s", message.AuthorID)
 			c.JSON(http.StatusOK, types.APIResponse{
 				Success: true,
-				Data:    discovered,
-				Message: fmt.Sprintf("Discovered %d nodes via DNS", len(discovered)),
+				Message: "Federated message processed successfully",
 			})
 		})
 	}
@@ -595,8 +507,8 @@ func healthHandler(c *gin.Context) {
 func statusPageHandler(c *gin.Context, service *node.Service) {
 	info := service.GetNodeInfo()
 	
-	// Get all active nodes 
-	nodes, _, _ := service.ListNodes(1, 100)
+	// Get all neighbor nodes (decentralized approach)
+	neighbors := service.GetNeighbors()
 	
 	// Get all agents
 	agents, _, _ := service.ListAgents(1, 100)
@@ -844,7 +756,8 @@ func statusPageHandler(c *gin.Context, service *node.Service) {
             <h3>🌐 Connected Neighbor Registries</h3>
             <div class="neighbor-list">`
             
-	neighbors := service.GetNeighbors()
+	// Refresh neighbors list for this section  
+	neighbors = service.GetNeighbors()
 	if len(neighbors) == 0 {
 		html += `<div class="empty-state">No neighbor registries connected. This registry is operating independently.</div>`
 	} else {
@@ -878,17 +791,15 @@ func statusPageHandler(c *gin.Context, service *node.Service) {
             <h3>🔗 Neighbour Network Nodes</h3>
             <div class="node-list">`
 
-	if len(nodes) == 0 {
-		html += `<div class="empty-state">No nodes registered yet. Be the first to join the network!</div>`
+	if len(neighbors) == 0 {
+		html += `<div class="empty-state">No neighbor nodes connected yet. Connect with other nodes to expand the network!</div>`
 	} else {
-		for _, node := range nodes {
-			capabilities := strings.Join(node.Capabilities, ", ")
-			if len(capabilities) > 60 {
-				capabilities = capabilities[:57] + "..."
-			}
+		for _, neighbor := range neighbors {
+			// Default capabilities for neighbors (we don't store this locally)
+			capabilities := "messaging, agent_hosting"
 			
 			statusColor := "#4caf50" // green for active
-			if node.Status != "active" {
+			if neighbor.Status != "active" {
 				statusColor = "#ff9800" // orange for inactive
 			}
 			
@@ -900,18 +811,16 @@ func statusPageHandler(c *gin.Context, service *node.Service) {
                         <div class="item-capabilities">%s</div>
                     </div>
                     <div class="item-meta">
-                        <div class="item-reputation">🏆 %d</div>
+                        <div class="item-url">%s</div>
                         <div>Last seen: %s</div>
-                        <div>v%s</div>
                     </div>
                 </div>`,
-				node.Domain,
+				neighbor.Domain,
 				statusColor,
-				strings.Title(node.Status),
+				strings.Title(neighbor.Status),
 				capabilities,
-				node.Reputation,
-				node.LastSeen.Format("Jan 02, 15:04"),
-				node.Version)
+				neighbor.URL,
+				neighbor.LastSeen.Format("Jan 02, 15:04"))
 		}
 	}
 
@@ -1111,8 +1020,8 @@ func statusPageHandler(c *gin.Context, service *node.Service) {
 func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
 	info := service.GetNodeInfo()
 	
-	// Get all known peer nodes from this node's registry
-	nodes, _, _ := service.ListNodes(1, 100)
+	// Get all neighbor nodes (decentralized approach)
+	neighbors := service.GetNeighbors()
 	
 	// Get all local agents
 	agents, _, _ := service.ListAgents(1, 100)
@@ -1309,7 +1218,8 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
             <h3>🌐 Connected Neighbor Nodes</h3>
             <div class="neighbor-list">`
             
-	neighbors := service.GetNeighbors()
+	// Refresh neighbors list for this section
+	neighbors = service.GetNeighbors()
 	if len(neighbors) == 0 {
 		html += `<div class="empty-state">No neighbor nodes connected. This node is operating independently.</div>`
 	} else {
@@ -1343,17 +1253,12 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
             <h3>🔗 Known Peer Nodes</h3>
             <div class="node-list">`
 
-	if len(nodes) == 0 {
-		html += `<div class="empty-state">No peer nodes known yet. Connect with other nodes to expand the network!</div>`
+	if len(neighbors) == 0 {
+		html += `<div class="empty-state">No neighbor nodes connected yet. Connect with other nodes to expand the network!</div>`
 	} else {
-		for _, node := range nodes {
-			capabilities := strings.Join(node.Capabilities, ", ")
-			if len(capabilities) > 60 {
-				capabilities = capabilities[:57] + "..."
-			}
-			
+		for _, neighbor := range neighbors {
 			statusColor := "#90EE90" // light green for active
-			if node.Status != "active" {
+			if neighbor.Status != "active" {
 				statusColor = "#DAA520" // goldenrod for inactive
 			}
 
@@ -1364,18 +1269,14 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
                         <div class="item-url" style="color: %s;">%s | %s</div>
                     </div>
                     <div class="item-meta">
-                        <div class="item-reputation">🏆 %d</div>
                         <div>Last seen: %s</div>
-                        <div>v%s</div>
                     </div>
                 </div>`,
-				node.Domain,             // %s - domain
-				statusColor,             // %s - color for style attribute
-				strings.Title(node.Status), // %s - status text  
-				capabilities,            // %s - capabilities text
-				node.Reputation,         // %d - reputation (int64)
-				node.LastSeen.Format("Jan 02, 15:04"), // %s - last seen
-				node.Version)
+				neighbor.Domain,             // %s - domain
+				statusColor,                 // %s - color for style attribute
+				strings.Title(neighbor.Status), // %s - status text  
+				neighbor.URL,                // %s - neighbor URL
+				neighbor.LastSeen.Format("Jan 02, 15:04")) // %s - last seen
 		}
 	}
 
