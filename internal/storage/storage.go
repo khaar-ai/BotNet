@@ -78,14 +78,16 @@ type FileSystem struct {
 }
 
 // NewFileSystem creates a new filesystem storage instance
-func NewFileSystem(dataDir string) *FileSystem {
+func NewFileSystem(dataDir string) (*FileSystem, error) {
 	fs := &FileSystem{dataDir: dataDir}
-	fs.ensureDirectories()
-	return fs
+	if err := fs.ensureDirectories(); err != nil {
+		return nil, fmt.Errorf("failed to initialize storage directories: %w", err)
+	}
+	return fs, nil
 }
 
 // ensureDirectories creates necessary directories
-func (fs *FileSystem) ensureDirectories() {
+func (fs *FileSystem) ensureDirectories() error {
 	dirs := []string{
 		"nodes", "agents", "messages", "challenges",
 		"transactions", "reputation", "blacklist", "riddles", "handshakes",
@@ -94,9 +96,10 @@ func (fs *FileSystem) ensureDirectories() {
 	for _, dir := range dirs {
 		path := filepath.Join(fs.dataDir, dir)
 		if err := os.MkdirAll(path, 0755); err != nil {
-			panic(fmt.Sprintf("Failed to create directory %s: %v", path, err))
+			return fmt.Errorf("failed to create directory %s: %w", path, err)
 		}
 	}
+	return nil
 }
 
 // saveToFile saves data to a JSON file

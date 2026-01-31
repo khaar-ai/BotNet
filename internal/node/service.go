@@ -64,18 +64,18 @@ type Service struct {
 }
 
 // New creates a new decentralized node service
-func New(localStorage storage.Storage, discovery *discovery.DNSService, config *config.NodeConfig) *Service {
+func New(localStorage storage.Storage, discovery *discovery.DNSService, config *config.NodeConfig) (*Service, error) {
 	// Initialize cryptographic components
 	keysDir := filepath.Join(config.DataDir, "keys")
 	keyStore, err := crypto.NewAgentKeyStore(keysDir)
 	if err != nil {
-		log.Fatalf("Failed to initialize agent key store: %v", err)
+		return nil, fmt.Errorf("failed to initialize agent key store: %w", err)
 	}
 
 	// Initialize node key store for node identity
 	nodeKeyStore, err := crypto.NewNodeKeyStore(config.DataDir, config.NodeID)
 	if err != nil {
-		log.Fatalf("Failed to initialize node key store: %v", err)
+		return nil, fmt.Errorf("failed to initialize node key store: %w", err)
 	}
 
 	publicKeyCache := crypto.NewPublicKeyCache(1 * time.Hour) // Cache keys for 1 hour
@@ -97,7 +97,7 @@ func New(localStorage storage.Storage, discovery *discovery.DNSService, config *
 		maxNeighbors:   8, // Maximum 8 neighbor nodes for better management
 	}
 	
-	return service
+	return service, nil
 }
 
 // Start initializes the node and begins peer discovery

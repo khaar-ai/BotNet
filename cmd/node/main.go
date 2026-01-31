@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"syscall"
@@ -20,6 +21,29 @@ import (
 	"github.com/khaar-ai/BotNet/internal/node"
 	"github.com/khaar-ai/BotNet/internal/storage"
 )
+
+// checkDataDirPermissions verifies we can write to the data directory
+func checkDataDirPermissions(dataDir string) error {
+	// Check if directory exists, create if it doesn't
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return fmt.Errorf("cannot create data directory %s: %w", dataDir, err)
+	}
+	
+	// Test write permissions by creating a temporary file
+	testFile := filepath.Join(dataDir, ".write_test")
+	f, err := os.Create(testFile)
+	if err != nil {
+		return fmt.Errorf("data directory %s is not writable: %w", dataDir, err)
+	}
+	f.Close()
+	
+	// Clean up test file
+	if err := os.Remove(testFile); err != nil {
+		log.Printf("Warning: Could not remove test file %s: %v", testFile, err)
+	}
+	
+	return nil
+}
 
 func main() {
 	// Load environment variables
@@ -36,8 +60,16 @@ func main() {
 	log.Printf("Starting decentralized node: %s", cfg.NodeID)
 	log.Printf("Initial goroutines: %d", runtime.NumGoroutine())
 
+	// Pre-flight check: verify data directory permissions
+	if err := checkDataDirPermissions(cfg.DataDir); err != nil {
+		log.Fatalf("Data directory pre-flight check failed: %v", err)
+	}
+
 	// Initialize local storage (node-specific)
-	localStorage := storage.NewFileSystem(cfg.DataDir)
+	localStorage, err := storage.NewFileSystem(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("Failed to initialize storage: %v", err)
+	}
 	
 	// Initialize DNS discovery service
 	discoveryService := discovery.NewDNS(cfg.Domain, cfg.NodeID)
@@ -46,7 +78,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	
-	nodeService := node.New(localStorage, discoveryService, cfg)
+	nodeService, err := node.New(localStorage, discoveryService, cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize node service: %v", err)
+	}
 
 	// Start node (includes peer discovery and neighbor initialization)
 	if err := nodeService.StartWithContext(ctx); err != nil {
