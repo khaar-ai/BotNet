@@ -57,6 +57,10 @@ type Service struct {
 	neighbors     map[string]*NeighborNode
 	neighborMutex sync.RWMutex
 	maxNeighbors  int
+	
+	// Context and cancellation
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // New creates a new decentralized node service
@@ -98,7 +102,16 @@ func New(localStorage storage.Storage, discovery *discovery.DNSService, config *
 
 // Start initializes the node and begins peer discovery
 func (s *Service) Start() error {
+	ctx := context.Background()
+	return s.StartWithContext(ctx)
+}
+
+// StartWithContext initializes the node with context for graceful shutdown
+func (s *Service) StartWithContext(ctx context.Context) error {
 	log.Printf("Starting decentralized node: %s", s.nodeID)
+	
+	// Set up context for this service
+	s.ctx, s.cancel = context.WithCancel(ctx)
 	
 	// 1. Initialize node identity (generate keys if needed)
 	if err := s.initializeIdentity(); err != nil {
@@ -111,13 +124,22 @@ func (s *Service) Start() error {
 	}
 	
 	// 3. Start background neighbor discovery
-	go s.discoverNeighbors()
+	go s.discoverNeighbors(s.ctx)
 	
-	// 4. Start neighbor health monitoring
-	go s.neighborHealthCheck()
+	// 4. Start all background tasks
+	s.StartBackgroundTasks(s.ctx)
 	
 	log.Printf("Node %s started successfully", s.nodeID)
 	return nil
+}
+
+// Stop gracefully shuts down the node
+func (s *Service) Stop() {
+	log.Printf("Stopping node %s...", s.nodeID)
+	if s.cancel != nil {
+		s.cancel()
+	}
+	log.Printf("Node %s stopped", s.nodeID)
 }
 
 // initializeIdentity sets up node cryptographic identity
@@ -182,12 +204,20 @@ func (s *Service) publishNodeManifest() error {
 }
 
 // discoverNeighbors performs DNS-based peer discovery from bootstrap seeds
-func (s *Service) discoverNeighbors() {
+func (s *Service) discoverNeighbors(ctx context.Context) {
 	log.Printf("Starting DNS-based neighbor discovery for %s", s.nodeID)
 	
 	if len(s.config.Bootstrap.Seeds) == 0 {
 		log.Printf("No bootstrap seeds configured for discovery")
 		return
+	}
+	
+	// Check if context is cancelled before starting discovery
+	select {
+	case <-ctx.Done():
+		log.Printf("Neighbor discovery stopped: %v", ctx.Err())
+		return
+	default:
 	}
 	
 	// Use DNS discovery to find neighbor nodes
@@ -904,26 +934,29 @@ func (s *Service) GetDMConversations(agentID string, page, pageSize int) ([]map[
 }
 
 // StartBackgroundTasks starts background maintenance tasks
-func (s *Service) StartBackgroundTasks() {
+func (s *Service) StartBackgroundTasks(ctx context.Context) {
 	// Start neighbor health checking
-	go s.neighborHealthCheck()
+	go s.neighborHealthCheck(ctx)
 	
 	// Challenge cleanup
-	go s.challengeCleanup()
+	go s.challengeCleanup(ctx)
 	
 	// Agent status updates
-	go s.updateAgentStatus()
+	go s.updateAgentStatus(ctx)
 	
-	log.Println("Background tasks started - neighbor health checking active")
+	log.Println("Background tasks started with context - neighbor health checking active")
 }
 
 // registryHeartbeat sends periodic heartbeats to the registry
-func (s *Service) registryHeartbeat() {
+func (s *Service) registryHeartbeat(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 	
 	for {
 		select {
+		case <-ctx.Done():
+			log.Printf("Registry heartbeat stopping: %v", ctx.Err())
+			return
 		case <-ticker.C:
 			if err := s.sendNeighborHealthChecks(); err != nil {
 				log.Printf("Neighbor health check failed: %v", err)
@@ -956,12 +989,15 @@ func (s *Service) sendNeighborHealthChecks() error {
 }
 
 // challengeCleanup cleans up expired challenges
-func (s *Service) challengeCleanup() {
+func (s *Service) challengeCleanup(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 	
 	for {
 		select {
+		case <-ctx.Done():
+			log.Printf("Challenge cleanup stopping: %v", ctx.Err())
+			return
 		case <-ticker.C:
 			challenges, _, err := s.localStorage.ListChallenges("", "pending", 1, 1000)
 			if err != nil {
@@ -980,12 +1016,15 @@ func (s *Service) challengeCleanup() {
 }
 
 // updateAgentStatus updates agent activity status
-func (s *Service) updateAgentStatus() {
+func (s *Service) updateAgentStatus(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 	
 	for {
 		select {
+		case <-ctx.Done():
+			log.Printf("Agent status update stopping: %v", ctx.Err())
+			return
 		case <-ticker.C:
 			agents, _, err := s.localStorage.ListAgents(s.config.NodeID, 1, 1000)
 			if err != nil {
@@ -1275,12 +1314,15 @@ func (s *Service) pingNeighbor(neighbor *NeighborNode) error {
 }
 
 // neighborHealthCheck periodically checks neighbor node health
-func (s *Service) neighborHealthCheck() {
+func (s *Service) neighborHealthCheck(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	
 	for {
 		select {
+		case <-ctx.Done():
+			log.Printf("Neighbor health check stopping: %v", ctx.Err())
+			return
 		case <-ticker.C:
 			s.checkAllNeighbors()
 		}

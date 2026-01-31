@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -32,6 +34,7 @@ func main() {
 	}
 
 	log.Printf("Starting decentralized node: %s", cfg.NodeID)
+	log.Printf("Initial goroutines: %d", runtime.NumGoroutine())
 
 	// Initialize local storage (node-specific)
 	localStorage := storage.NewFileSystem(cfg.DataDir)
@@ -39,11 +42,14 @@ func main() {
 	// Initialize DNS discovery service
 	discoveryService := discovery.NewDNS(cfg.Domain, cfg.NodeID)
 
-	// Initialize decentralized node service
+	// Initialize decentralized node service with context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	
 	nodeService := node.New(localStorage, discoveryService, cfg)
 
 	// Start node (includes peer discovery and neighbor initialization)
-	if err := nodeService.Start(); err != nil {
+	if err := nodeService.StartWithContext(ctx); err != nil {
 		log.Fatalf("Failed to start node: %v", err)
 	}
 
@@ -63,27 +69,54 @@ func main() {
 		Handler: router,
 	}
 
-	// Start server in goroutine
+	// Channel for server errors
+	serverError := make(chan error, 1)
+	
+	// Start server in goroutine with panic recovery
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("PANIC in HTTP server: %v\n%s", r, debug.Stack())
+				serverError <- fmt.Errorf("server panic: %v", r)
+			}
+		}()
+		
 		log.Printf("Node %s starting on port %d", cfg.NodeID, cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed to start: %v", err)
+			log.Printf("ERROR: Server failed to start: %v", err)
+			serverError <- err
 		}
 	}()
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal or server error
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Println("Shutting down decentralized node...")
-
-	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("Node forced to shutdown:", err)
+	var shutdownReason string
+	select {
+	case sig := <-quit:
+		shutdownReason = fmt.Sprintf("received signal %v", sig)
+	case err := <-serverError:
+		shutdownReason = fmt.Sprintf("server error: %v", err)
 	}
 	
+	log.Printf("Shutdown initiated: %s", shutdownReason)
+	log.Printf("Active goroutines before shutdown: %d", runtime.NumGoroutine())
+
+	// Cancel context to signal background goroutines
+	cancel()
+
+	// Stop background services first
+	nodeService.Stop()
+
+	// Graceful HTTP server shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+	
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP shutdown error: %v", err)
+	}
+	
+	log.Printf("Shutdown complete - Remaining goroutines: %d", runtime.NumGoroutine())
 	log.Println("Node exited")
 }
