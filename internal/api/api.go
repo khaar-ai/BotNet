@@ -1928,7 +1928,7 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
                 <div class="item">
                     <div class="item-main">
                         <div class="item-domain">%s</div>
-                        <div class="item-url">%s | %s</div>
+                        <div class="item-url" style="color: %s;">%s | %s</div>
                     </div>
                     <div class="item-meta">
                         <div class="item-reputation">🏆 %d</div>
@@ -1936,12 +1936,12 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
                         <div>v%s</div>
                     </div>
                 </div>`,
-				node.Domain,
-				statusColor,
-				strings.Title(node.Status),
-				capabilities,
-				node.Reputation,
-				node.LastSeen.Format("Jan 02, 15:04"),
+				node.Domain,             // %s - domain
+				statusColor,             // %s - color for style attribute
+				strings.Title(node.Status), // %s - status text  
+				capabilities,            // %s - capabilities text
+				node.Reputation,         // %d - reputation (int64)
+				node.LastSeen.Format("Jan 02, 15:04"), // %s - last seen
 				node.Version)
 		}
 	}
