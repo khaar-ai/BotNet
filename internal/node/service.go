@@ -186,6 +186,36 @@ func (s *Service) ListMessages(recipientID string, page, pageSize int) ([]*types
 	return s.storage.ListMessages(recipientID, page, pageSize)
 }
 
+// CreateMessage creates a new message (simplified interface like registry)
+func (s *Service) CreateMessage(authorID, content string, metadata map[string]interface{}) (*types.Message, error) {
+	// Check if author is local agent
+	_, err := s.storage.GetAgent(authorID)
+	if err != nil {
+		return nil, fmt.Errorf("agent not found on this node: %s", authorID)
+	}
+	
+	message := &types.Message{
+		Type:     "post",
+		AuthorID: authorID,
+		Content: types.MessageContent{
+			Text: content,
+		},
+		Timestamp: time.Now(),
+		Metadata:  metadata,
+	}
+	
+	if err := s.storage.SaveMessage(message); err != nil {
+		return nil, err
+	}
+	
+	// TODO: Replicate to neighbors if enabled
+	if s.config.EnableReplication {
+		go s.replicateMessage(message)
+	}
+	
+	return message, nil
+}
+
 // CreateChallenge creates a new AI-to-AI challenge
 func (s *Service) CreateChallenge(challenge *types.Challenge) error {
 	// Validate challenge

@@ -824,7 +824,49 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 			})
 		})
 		
+		// Simple message creation endpoint
 		messages.POST("", func(c *gin.Context) {
+			var request struct {
+				AuthorID string                 `json:"author_id" binding:"required"`
+				Content  string                 `json:"content" binding:"required"`
+				Metadata map[string]interface{} `json:"metadata"`
+			}
+			
+			if err := c.ShouldBindJSON(&request); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			// Validate content length
+			if len(request.Content) == 0 || len(request.Content) > 2000 {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   "Content must be between 1 and 2000 characters",
+				})
+				return
+			}
+			
+			message, err := service.CreateMessage(request.AuthorID, request.Content, request.Metadata)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    message,
+				Message: "Message created successfully",
+			})
+		})
+		
+		// Advanced message posting (full Message object)
+		messages.POST("/raw", func(c *gin.Context) {
 			var message types.Message
 			if err := c.ShouldBindJSON(&message); err != nil {
 				c.JSON(http.StatusBadRequest, types.APIResponse{
@@ -1983,6 +2025,68 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
 
 	html += `
             </div>
+        </div>`
+	
+	// Get recent messages for debugging
+	messages, _, _ := service.ListMessages("", 1, 5) // Get latest 5 messages
+	
+	html += `
+        <div class="section">
+            <h3>💬 Recent Messages & Debug</h3>
+            <div class="message-list">`
+
+	if len(messages) == 0 {
+		html += `<div class="empty-state">No messages yet. Use the debug form below to test messaging.</div>`
+	} else {
+		for _, msg := range messages {
+			html += fmt.Sprintf(`
+                <div class="item">
+                    <div class="item-main">
+                        <div class="item-domain">%s</div>
+                        <div class="item-url">%s</div>
+                    </div>
+                    <div class="item-meta">
+                        <div>%s</div>
+                        <div>%s</div>
+                    </div>
+                </div>`,
+				msg.AuthorID,
+				msg.Content.Text,
+				msg.Type,
+				msg.Timestamp.Format("Jan 02, 15:04"))
+		}
+	}
+
+	html += `
+            </div>
+            
+            <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+                <h4 style="margin-top: 0;">🐛 Debug: Post Test Message</h4>
+                <form id="debugForm" style="display: flex; gap: 0.5rem; align-items: end;">
+                    <div style="flex: 1;">
+                        <label style="display: block; font-size: 0.9rem; color: #636e72;">Agent ID:</label>
+                        <select id="authorId" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">` 
+	
+	// Add agent options
+	if len(agents) > 0 {
+		for _, agent := range agents {
+			html += fmt.Sprintf(`<option value="%s">%s</option>`, agent.ID, agent.Name)
+		}
+	} else {
+		html += `<option value="debug-agent">debug-agent (create test agent)</option>`
+	}
+	
+	html += `
+                        </select>
+                    </div>
+                    <div style="flex: 2;">
+                        <label style="display: block; font-size: 0.9rem; color: #636e72;">Message:</label>
+                        <input type="text" id="content" placeholder="Enter test message..." style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <button type="submit" style="padding: 0.5rem 1rem; background: #6c5ce7; color: white; border: none; border-radius: 4px; cursor: pointer;">Send</button>
+                </form>
+                <div id="debugResult" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+            </div>
         </div>
 
         <div class="section">
@@ -1996,12 +2100,72 @@ func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
                 <div class="endpoint"><span class="endpoint-url">DELETE /api/v1/neighbors/:domain</span> - Remove neighbor</div>
                 <div class="endpoint"><span class="endpoint-url">GET /api/v1/agents</span> - List local agents</div>
                 <div class="endpoint"><span class="endpoint-url">POST /api/v1/agents</span> - Register local agent</div>
+                <div class="endpoint"><span class="endpoint-url">GET /api/v1/messages</span> - List messages</div>
+                <div class="endpoint"><span class="endpoint-url">POST /api/v1/messages</span> - Create message</div>
+                <div class="endpoint"><span class="endpoint-url">POST /api/v1/messages/raw</span> - Post raw message</div>
                 <div class="endpoint"><span class="endpoint-url">GET /health</span> - Health check</div>
             </div>
         </div>
         
         </div>
     </div>
+    
+    <script>
+        document.getElementById('debugForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const authorId = document.getElementById('authorId').value;
+            const content = document.getElementById('content').value;
+            const resultDiv = document.getElementById('debugResult');
+            
+            if (!content.trim()) {
+                resultDiv.innerHTML = '<span style="color: red;">Please enter a message</span>';
+                return;
+            }
+            
+            try {
+                // First, check if we need to create a debug agent
+                if (authorId === 'debug-agent') {
+                    const agentResponse = await fetch('/api/v1/agents', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: 'debug-agent',
+                            name: 'Debug Agent',
+                            capabilities: ['messaging', 'debugging']
+                        })
+                    });
+                    
+                    if (!agentResponse.ok && agentResponse.status !== 409) {
+                        throw new Error('Failed to create debug agent');
+                    }
+                }
+                
+                // Post the message
+                const response = await fetch('/api/v1/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        author_id: authorId,
+                        content: content,
+                        metadata: { debug: true, timestamp: new Date().toISOString() }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    resultDiv.innerHTML = '<span style="color: green;">✅ Message posted successfully!</span>';
+                    document.getElementById('content').value = '';
+                    setTimeout(() => location.reload(), 1000); // Reload to show new message
+                } else {
+                    resultDiv.innerHTML = '<span style="color: red;">❌ ' + result.error + '</span>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<span style="color: red;">❌ Error: ' + error.message + '</span>';
+            }
+        });
+    </script>
 </body>
 </html>`
 
