@@ -13,23 +13,23 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/khaar-ai/BotNet/internal/config"
-	"github.com/khaar-ai/BotNet/internal/registry"
+	"github.com/khaar-ai/BotNet/internal/node"
 	"github.com/khaar-ai/BotNet/pkg/types"
 )
 
 // AuthHandler handles authentication routes
 type AuthHandler struct {
-	config       *config.RegistryConfig
+	config       *config.NodeConfig
 	oauth2Config *oauth2.Config
-	registry     *registry.Service
+	nodeService  *node.Service
 }
 
 // NewAuthHandler creates a new auth handler
-func NewAuthHandler(config *config.RegistryConfig, registryService *registry.Service) *AuthHandler {
+func NewAuthHandler(config *config.NodeConfig, nodeService *node.Service) *AuthHandler {
 	oauth2Config := &oauth2.Config{
-		ClientID:     config.GitHubClientID,
-		ClientSecret: config.GitHubClientSecret,
-		RedirectURL:  fmt.Sprintf("https://%s/auth/callback", config.Host),
+		ClientID:     config.GitHub.ClientID,
+		ClientSecret: config.GitHub.Secret,
+		RedirectURL:  fmt.Sprintf("https://%s/auth/callback", config.Domain),
 		Scopes:       []string{"user:email"},
 		Endpoint:     github.Endpoint,
 	}
@@ -37,7 +37,7 @@ func NewAuthHandler(config *config.RegistryConfig, registryService *registry.Ser
 	return &AuthHandler{
 		config:       config,
 		oauth2Config: oauth2Config,
-		registry:     registryService,
+		nodeService:  nodeService,
 	}
 }
 
@@ -156,7 +156,7 @@ func (h *AuthHandler) RegisterLeaf(c *gin.Context) {
 	}
 
 	// Register the agent in the network directory
-	if err := h.registry.RegisterAgent(agent); err != nil {
+	if err := h.nodeService.RegisterAgent(agent); err != nil {
 		// Log error but don't fail the authentication - user still gets JWT token
 		// This allows authentication to work even if agent registration fails
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,39 +19,28 @@ import (
 )
 
 func main() {
-	// Command line flags
-	var domain = flag.String("domain", "", "Domain for this node (required)")
-	var port = flag.Int("port", 8081, "Port to listen on")
-	flag.Parse()
-
-	if *domain == "" {
-		log.Fatal("Domain is required. Use --domain=your-domain.com")
-	}
-
 	// Load environment variables
-	if err := godotenv.Load("config/.env"); err != nil {
+	if err := godotenv.Load(".env"); err != nil {
 		log.Println("No .env file found, using environment variables")
 	}
 
-	// Load configuration
-	cfg, err := config.LoadNode(*domain, *port)
+	// Load decentralized node configuration
+	cfg, err := config.LoadNode()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Initialize storage
-	storage := storage.NewFileSystem(cfg.DataDir)
+	log.Printf("Starting decentralized node: %s", cfg.NodeID)
 
-	// Initialize node service
-	nodeService := node.New(storage, cfg)
+	// Initialize local storage (node-specific)
+	localStorage := storage.NewFileSystem(cfg.DataDir)
 
-	// Register with registry if configured
-	if cfg.RegistryURL != "" {
-		go func() {
-			if err := nodeService.RegisterWithRegistry(); err != nil {
-				log.Printf("Failed to register with registry: %v", err)
-			}
-		}()
+	// Initialize decentralized node service
+	nodeService := node.New(localStorage, cfg)
+
+	// Start node (includes peer discovery and neighbor initialization)
+	if err := nodeService.Start(); err != nil {
+		log.Fatalf("Failed to start node: %v", err)
 	}
 
 	// Setup Gin router
@@ -62,7 +50,7 @@ func main() {
 
 	router := gin.Default()
 	
-	// Setup API routes
+	// Setup decentralized node API routes
 	api.SetupNodeRoutes(router, nodeService, cfg)
 
 	// Create HTTP server
@@ -71,31 +59,27 @@ func main() {
 		Handler: router,
 	}
 
-	// Start server in a goroutine
+	// Start server in goroutine
 	go func() {
-		log.Printf("Node server starting on %s:%d", cfg.Domain, cfg.Port)
+		log.Printf("Node %s starting on port %d", cfg.NodeID, cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+			log.Fatalf("Server failed to start: %v", err)
 		}
 	}()
-
-	// Start background tasks
-	go nodeService.StartBackgroundTasks()
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-
-	log.Println("Shutting down node server...")
+	log.Println("Shutting down decentralized node...")
 
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
+	
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Node server forced to shutdown: %v", err)
+		log.Fatal("Node forced to shutdown:", err)
 	}
-
-	log.Println("Node server exited")
+	
+	log.Println("Node exited")
 }

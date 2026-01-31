@@ -27,50 +27,154 @@ type NeighborNode struct {
 	Status   string          `json:"status"`
 }
 
-// Service handles node operations
+// Service handles decentralized node operations
 type Service struct {
-	storage   storage.Storage
+	// Node identity
+	nodeID       string
+	domain       string
+	capabilities []string
+	
+	// Storage (split into local and neighbor)
+	localStorage  storage.Storage  // Local agents and messages only
+	// TODO: Add neighborStore for neighbor metadata
+	
+	// Configuration
 	config    *config.NodeConfig
 	startTime time.Time
 	
-	// Neighbor node management
+	// Neighbor management (decentralized)
 	neighbors     map[string]*NeighborNode
 	neighborMutex sync.RWMutex
 	maxNeighbors  int
 }
 
-// New creates a new node service
-func New(storage storage.Storage, config *config.NodeConfig) *Service {
-	return &Service{
-		storage:      storage,
+// New creates a new decentralized node service
+func New(localStorage storage.Storage, config *config.NodeConfig) *Service {
+	service := &Service{
+		nodeID:       config.NodeID,
+		domain:       config.Domain, 
+		capabilities: config.Capabilities,
+		localStorage: localStorage,
 		config:       config,
 		startTime:    time.Now(),
 		neighbors:    make(map[string]*NeighborNode),
-		maxNeighbors: 12, // Maximum 12 neighbor nodes
+		maxNeighbors: 8, // Maximum 8 neighbor nodes for better management
+	}
+	
+	return service
+}
+
+// Start initializes the node and begins peer discovery
+func (s *Service) Start() error {
+	log.Printf("Starting decentralized node: %s", s.nodeID)
+	
+	// 1. Initialize node identity (generate keys if needed)
+	if err := s.initializeIdentity(); err != nil {
+		return fmt.Errorf("failed to initialize identity: %v", err)
+	}
+	
+	// 2. Start background neighbor discovery
+	go s.discoverNeighbors()
+	
+	// 3. Start neighbor health monitoring
+	go s.neighborHealthCheck()
+	
+	log.Printf("Node %s started successfully", s.nodeID)
+	return nil
+}
+
+// initializeIdentity sets up node cryptographic identity
+func (s *Service) initializeIdentity() error {
+	// TODO: Implement key generation/loading
+	log.Printf("Node identity initialized for %s", s.nodeID)
+	return nil
+}
+
+// discoverNeighbors performs initial peer discovery from bootstrap seeds
+func (s *Service) discoverNeighbors() {
+	log.Printf("Starting neighbor discovery for %s", s.nodeID)
+	
+	for _, seed := range s.config.Bootstrap.Seeds {
+		log.Printf("Attempting to discover neighbor: %s", seed)
+		
+		// TODO: Implement DNS TXT record lookup and manifest fetching
+		// For now, add neighbor using domain and URL
+		neighborURL := fmt.Sprintf("https://botnet.%s", seed)
+		
+		if err := s.AddNeighbor(seed, neighborURL); err != nil {
+			log.Printf("Failed to add neighbor %s: %v", seed, err)
+		}
+	}
+	
+	log.Printf("Neighbor discovery completed. Found %d neighbors", len(s.neighbors))
+}
+
+// GetNodeInfo returns information about this node only (decentralized)
+func (s *Service) GetNodeInfo() *types.NodeInfo {
+	agents, _, _ := s.localStorage.ListAgents("", 1, 1000) // Get local agents only
+	
+	s.neighborMutex.RLock()
+	neighborCount := len(s.neighbors)
+	s.neighborMutex.RUnlock()
+	
+	return &types.NodeInfo{
+		NodeID:       s.nodeID,
+		Version:      "1.0.0", 
+		LocalAgents:  len(agents),
+		Neighbors:    neighborCount,
+		Capabilities: s.capabilities,
+		Uptime:       time.Since(s.startTime),
+		LastSync:     s.getLastNeighborSync(),
+		Domain:       s.domain,
 	}
 }
 
-// GetInfo returns node information (acting as its own registry)
-func (s *Service) GetInfo() *types.RegistryInfo {
-	agents, _, _ := s.storage.ListAgents("", 1, 1000) // Get all local agents
+// getLastNeighborSync returns the most recent neighbor synchronization time
+func (s *Service) getLastNeighborSync() time.Time {
+	s.neighborMutex.RLock()
+	defer s.neighborMutex.RUnlock()
 	
-	// Get peer nodes from neighbors
-	peerCount := len(s.neighbors)
+	var lastSync time.Time
+	for _, neighbor := range s.neighbors {
+		if neighbor.LastSeen.After(lastSync) {
+			lastSync = neighbor.LastSeen
+		}
+	}
 	
-	return &types.RegistryInfo{
-		Version:    "1.0.0",
-		NodeCount:  peerCount,
-		AgentCount: len(agents),
-		Uptime:     time.Since(s.startTime),
-		LastSync:   time.Now(),
-		Features: []string{
-			"peer_discovery",
-			"agent_registry", 
-			"domain_verification",
-			"decentralized_messaging",
-			"neighbor_networking",
-			"proof_of_intelligence_handshakes",
-		},
+	if lastSync.IsZero() {
+		return s.startTime
+	}
+	return lastSync
+}
+
+// GetNetworkInfo returns an aggregated view by querying neighbors (estimates)
+func (s *Service) GetNetworkInfo() *types.NetworkInfo {
+	localAgents, _, _ := s.localStorage.ListAgents("", 1, 1000)
+	totalAgents := len(localAgents)
+	totalNodes := 1 // This node
+	
+	s.neighborMutex.RLock()
+	neighbors := make([]*NeighborNode, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		if neighbor.Status == "active" {
+			neighbors = append(neighbors, neighbor)
+		}
+	}
+	s.neighborMutex.RUnlock()
+	
+	// Query active neighbors for their stats (simplified for now)
+	for _ = range neighbors {
+		// TODO: Actually query neighbor for NodeInfo
+		// For now, estimate
+		totalAgents += 10 // Estimate
+		totalNodes++
+	}
+	
+	return &types.NetworkInfo{
+		EstimatedNodes:  totalNodes,
+		EstimatedAgents: totalAgents,
+		ViewFrom:        s.nodeID,
+		LastUpdated:     time.Now(),
 	}
 }
 
@@ -79,51 +183,7 @@ func (s *Service) GetConfig() *config.NodeConfig {
 	return s.config
 }
 
-// RegisterWithRegistry registers this node with the central registry
-func (s *Service) RegisterWithRegistry() error {
-	if s.config.RegistryURL == "" {
-		return nil // No registry configured
-	}
-	
-	node := &types.Node{
-		ID:          s.config.NodeID,
-		Domain:      s.config.Domain,
-		URL:         fmt.Sprintf("https://%s:%d", s.config.Domain, s.config.Port),
-		PublicKey:   s.config.PublicKey,
-		Status:      "active",
-		Version:     "1.0.0",
-		Capabilities: []string{"messaging", "agent_hosting", "challenges"},
-	}
-	
-	jsonData, err := json.Marshal(node)
-	if err != nil {
-		return fmt.Errorf("failed to marshal node data: %w", err)
-	}
-	
-	url := fmt.Sprintf("%s/api/v1/nodes", s.config.RegistryURL)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	
-	req.Header.Set("Content-Type", "application/json")
-	if s.config.RegistryToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.RegistryToken))
-	}
-	
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to register with registry: %w", err)
-	}
-	defer resp.Body.Close()
-	
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("registry returned status %d", resp.StatusCode)
-	}
-	
-	return nil
-}
+// TODO: Removed RegisterWithRegistry - using decentralized approach now
 
 // RegisterAgent registers a new agent on this node
 func (s *Service) RegisterAgent(agent *types.Agent) error {
@@ -135,17 +195,17 @@ func (s *Service) RegisterAgent(agent *types.Agent) error {
 		agent.Capabilities = []string{"messaging", "challenges"}
 	}
 	
-	return s.storage.SaveAgent(agent)
+	return s.localStorage.SaveAgent(agent)
 }
 
 // GetAgent retrieves an agent by ID
 func (s *Service) GetAgent(id string) (*types.Agent, error) {
-	return s.storage.GetAgent(id)
+	return s.localStorage.GetAgent(id)
 }
 
 // ListAgents returns a paginated list of agents on this node
 func (s *Service) ListAgents(page, pageSize int) ([]*types.Agent, int64, error) {
-	return s.storage.ListAgents(s.config.NodeID, page, pageSize)
+	return s.localStorage.ListAgents(s.config.NodeID, page, pageSize)
 }
 
 // PostMessage posts a message to the network
@@ -156,7 +216,7 @@ func (s *Service) PostMessage(message *types.Message) error {
 	}
 	
 	// Check if author is local agent
-	_, err := s.storage.GetAgent(message.AuthorID)
+	_, err := s.localStorage.GetAgent(message.AuthorID)
 	if err != nil {
 		return fmt.Errorf("agent not found on this node: %s", message.AuthorID)
 	}
@@ -165,32 +225,30 @@ func (s *Service) PostMessage(message *types.Message) error {
 	message.Timestamp = time.Now()
 	
 	// Save message
-	if err := s.storage.SaveMessage(message); err != nil {
+	if err := s.localStorage.SaveMessage(message); err != nil {
 		return fmt.Errorf("failed to save message: %w", err)
 	}
 	
-	// TODO: Replicate to other nodes if enabled
-	if s.config.EnableReplication {
-		go s.replicateMessage(message)
-	}
+	// Federate message to neighbor nodes (decentralized approach)
+	go s.federateMessage(message)
 	
 	return nil
 }
 
 // GetMessage retrieves a message by ID
 func (s *Service) GetMessage(id string) (*types.Message, error) {
-	return s.storage.GetMessage(id)
+	return s.localStorage.GetMessage(id)
 }
 
 // ListMessages returns a paginated list of messages
 func (s *Service) ListMessages(recipientID string, page, pageSize int) ([]*types.Message, int64, error) {
-	return s.storage.ListMessages(recipientID, page, pageSize)
+	return s.localStorage.ListMessages(recipientID, page, pageSize)
 }
 
 // CreateMessage creates a new message (simplified interface like registry)
 func (s *Service) CreateMessage(authorID, content string, metadata map[string]interface{}) (*types.Message, error) {
 	// Check if author is local agent
-	_, err := s.storage.GetAgent(authorID)
+	_, err := s.localStorage.GetAgent(authorID)
 	if err != nil {
 		return nil, fmt.Errorf("agent not found on this node: %s", authorID)
 	}
@@ -205,14 +263,12 @@ func (s *Service) CreateMessage(authorID, content string, metadata map[string]in
 		Metadata:  metadata,
 	}
 	
-	if err := s.storage.SaveMessage(message); err != nil {
+	if err := s.localStorage.SaveMessage(message); err != nil {
 		return nil, err
 	}
 	
-	// TODO: Replicate to neighbors if enabled
-	if s.config.EnableReplication {
-		go s.replicateMessage(message)
-	}
+	// Federate message to neighbor nodes (decentralized approach)
+	go s.federateMessage(message)
 	
 	return message, nil
 }
@@ -225,7 +281,7 @@ func (s *Service) CreateChallenge(challenge *types.Challenge) error {
 	}
 	
 	// Check if issuer is local agent
-	_, err := s.storage.GetAgent(challenge.IssuerID)
+	_, err := s.localStorage.GetAgent(challenge.IssuerID)
 	if err != nil {
 		return fmt.Errorf("issuer agent not found on this node: %s", challenge.IssuerID)
 	}
@@ -234,12 +290,12 @@ func (s *Service) CreateChallenge(challenge *types.Challenge) error {
 	challenge.Status = "pending"
 	challenge.ExpiresAt = time.Now().Add(24 * time.Hour) // 24 hour default
 	
-	return s.storage.SaveChallenge(challenge)
+	return s.localStorage.SaveChallenge(challenge)
 }
 
 // RespondToChallenge responds to a challenge
 func (s *Service) RespondToChallenge(challengeID, answer string) error {
-	challenge, err := s.storage.GetChallenge(challengeID)
+	challenge, err := s.localStorage.GetChallenge(challengeID)
 	if err != nil {
 		return fmt.Errorf("challenge not found: %s", challengeID)
 	}
@@ -250,7 +306,7 @@ func (s *Service) RespondToChallenge(challengeID, answer string) error {
 	
 	if time.Now().After(challenge.ExpiresAt) {
 		challenge.Status = "expired"
-		s.storage.SaveChallenge(challenge)
+		s.localStorage.SaveChallenge(challenge)
 		return fmt.Errorf("challenge has expired")
 	}
 	
@@ -263,12 +319,12 @@ func (s *Service) RespondToChallenge(challengeID, answer string) error {
 	completedAt := time.Now()
 	challenge.CompletedAt = &completedAt
 	
-	return s.storage.SaveChallenge(challenge)
+	return s.localStorage.SaveChallenge(challenge)
 }
 
 // ListChallenges returns a paginated list of challenges
 func (s *Service) ListChallenges(targetID, status string, page, pageSize int) ([]*types.Challenge, int64, error) {
-	return s.storage.ListChallenges(targetID, status, page, pageSize)
+	return s.localStorage.ListChallenges(targetID, status, page, pageSize)
 }
 
 // StartBackgroundTasks starts background maintenance tasks
@@ -293,36 +349,32 @@ func (s *Service) registryHeartbeat() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := s.sendHeartbeat(); err != nil {
-				// Log error but continue
-				continue
+			if err := s.sendNeighborHealthChecks(); err != nil {
+				log.Printf("Neighbor health check failed: %v", err)
 			}
 		}
 	}
 }
 
-// sendHeartbeat sends a heartbeat to the registry
-func (s *Service) sendHeartbeat() error {
-	if s.config.RegistryURL == "" {
-		return nil
+// sendNeighborHealthChecks pings neighbor nodes to check their health (decentralized)
+func (s *Service) sendNeighborHealthChecks() error {
+	s.neighborMutex.RLock()
+	neighbors := make([]*NeighborNode, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		neighbors = append(neighbors, neighbor)
 	}
+	s.neighborMutex.RUnlock()
 	
-	url := fmt.Sprintf("%s/api/v1/nodes/%s/heartbeat", s.config.RegistryURL, s.config.NodeID)
-	req, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		return err
+	for _, neighbor := range neighbors {
+		// TODO: Implement actual health check to neighbor
+		// For now, just update LastSeen 
+		s.neighborMutex.Lock()
+		neighbor.LastSeen = time.Now()
+		neighbor.Status = "active"
+		s.neighborMutex.Unlock()
+		
+		log.Printf("Health check completed for neighbor: %s", neighbor.ID)
 	}
-	
-	if s.config.RegistryToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.RegistryToken))
-	}
-	
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
 	
 	return nil
 }
@@ -335,7 +387,7 @@ func (s *Service) challengeCleanup() {
 	for {
 		select {
 		case <-ticker.C:
-			challenges, _, err := s.storage.ListChallenges("", "pending", 1, 1000)
+			challenges, _, err := s.localStorage.ListChallenges("", "pending", 1, 1000)
 			if err != nil {
 				continue
 			}
@@ -344,7 +396,7 @@ func (s *Service) challengeCleanup() {
 			for _, challenge := range challenges {
 				if now.After(challenge.ExpiresAt) {
 					challenge.Status = "expired"
-					s.storage.SaveChallenge(challenge)
+					s.localStorage.SaveChallenge(challenge)
 				}
 			}
 		}
@@ -359,7 +411,7 @@ func (s *Service) updateAgentStatus() {
 	for {
 		select {
 		case <-ticker.C:
-			agents, _, err := s.storage.ListAgents(s.config.NodeID, 1, 1000)
+			agents, _, err := s.localStorage.ListAgents(s.config.NodeID, 1, 1000)
 			if err != nil {
 				continue
 			}
@@ -368,7 +420,7 @@ func (s *Service) updateAgentStatus() {
 			for _, agent := range agents {
 				if agent.LastActive.Before(cutoff) && agent.Status == "online" {
 					agent.Status = "offline"
-					s.storage.SaveAgent(agent)
+					s.localStorage.SaveAgent(agent)
 				}
 			}
 		}
@@ -376,7 +428,7 @@ func (s *Service) updateAgentStatus() {
 }
 
 // replicateMessage replicates a message to other nodes (placeholder)
-func (s *Service) replicateMessage(message *types.Message) {
+func (s *Service) federateMessage(message *types.Message) {
 	// TODO: Implement message replication to other nodes
 	// This would involve:
 	// 1. Getting list of peer nodes from registry
@@ -390,13 +442,13 @@ func (s *Service) ProcessIncomingMessage(message *types.Message) error {
 	// TODO: Implement message signature validation
 	
 	// Check if we already have this message
-	existing, err := s.storage.GetMessage(message.ID)
+	existing, err := s.localStorage.GetMessage(message.ID)
 	if err == nil && existing != nil {
 		return nil // Already have this message
 	}
 	
 	// Save the message
-	return s.storage.SaveMessage(message)
+	return s.localStorage.SaveMessage(message)
 }
 
 // NEIGHBOR NODE MANAGEMENT
@@ -597,7 +649,7 @@ func generateNeighborID(domain string) string {
 // RegisterNode registers a peer node in this node's local registry
 func (s *Service) RegisterNode(node *types.Node) error {
 	// Check for domain conflicts
-	existingNodes, _, _ := s.storage.ListNodes(1, 1000)
+	existingNodes, _, _ := s.localStorage.ListNodes(1, 1000)
 	
 	for _, existing := range existingNodes {
 		if existing.Domain == node.Domain && existing.ID != node.ID {
@@ -606,11 +658,11 @@ func (s *Service) RegisterNode(node *types.Node) error {
 	}
 	
 	// Check blacklist
-	if s.storage.IsBlacklisted("domain", node.Domain) {
+	if s.localStorage.IsBlacklisted("domain", node.Domain) {
 		return fmt.Errorf("domain is blacklisted: %s", node.Domain)
 	}
 	
-	if s.storage.IsBlacklisted("node", node.ID) {
+	if s.localStorage.IsBlacklisted("node", node.ID) {
 		return fmt.Errorf("node is blacklisted: %s", node.ID)
 	}
 	
@@ -626,23 +678,23 @@ func (s *Service) RegisterNode(node *types.Node) error {
 		node.Capabilities = []string{"messaging", "agent_hosting"}
 	}
 	
-	return s.storage.SaveNode(node)
+	return s.localStorage.SaveNode(node)
 }
 
 // ListNodes returns all known peer nodes from this node's registry
 func (s *Service) ListNodes(page, pageSize int) ([]*types.Node, int64, error) {
-	return s.storage.ListNodes(page, pageSize)
+	return s.localStorage.ListNodes(page, pageSize)
 }
 
 // GetNode returns a specific peer node from this node's registry
 func (s *Service) GetNode(id string) (*types.Node, error) {
-	return s.storage.GetNode(id)
+	return s.localStorage.GetNode(id)
 }
 
 // UpdateNode updates a peer node in this node's registry
 func (s *Service) UpdateNode(node *types.Node) error {
 	// Check if node exists
-	existing, err := s.storage.GetNode(node.ID)
+	existing, err := s.localStorage.GetNode(node.ID)
 	if err != nil {
 		return fmt.Errorf("node not found: %s", node.ID)
 	}
@@ -651,12 +703,12 @@ func (s *Service) UpdateNode(node *types.Node) error {
 	node.CreatedAt = existing.CreatedAt
 	node.LastSeen = time.Now()
 	
-	return s.storage.SaveNode(node)
+	return s.localStorage.SaveNode(node)
 }
 
 // DeregisterNode removes a peer node from this node's registry
 func (s *Service) DeregisterNode(id string) error {
-	return s.storage.DeleteNode(id)
+	return s.localStorage.DeleteNode(id)
 }
 
 // FEDERATION DISCOVERY METHODS

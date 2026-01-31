@@ -187,3 +187,48 @@ type PaginatedResponse struct {
 	Total      int64       `json:"total"`
 	TotalPages int         `json:"total_pages"`
 }
+
+// NodeInfo represents information about a single decentralized node
+type NodeInfo struct {
+	NodeID        string        `json:"node_id"`
+	Version       string        `json:"version"`
+	LocalAgents   int           `json:"local_agents"`
+	Neighbors     int           `json:"neighbors"`
+	Capabilities  []string      `json:"capabilities"`
+	Uptime        time.Duration `json:"uptime"`
+	LastSync      time.Time     `json:"last_sync"`
+	Domain        string        `json:"domain"`
+}
+
+// NodeManifest represents the discoverable manifest for a node
+type NodeManifest struct {
+	NodeID       string            `json:"node_id"`      // botnet.airon.games
+	Version      string            `json:"version"`      // 1.0.0
+	PublicKey    string            `json:"public_key"`   // ed25519:...
+	Endpoints    NodeEndpoints     `json:"endpoints"`
+	Capabilities []string          `json:"capabilities"`
+	RateLimit    RateLimitInfo     `json:"rate_limit"`
+	Signature    string            `json:"signature"`
+	UpdatedAt    time.Time         `json:"updated_at"`
+}
+
+// NodeEndpoints defines the API endpoints for a node
+type NodeEndpoints struct {
+	Federation string `json:"federation"` // https://botnet.airon.games/federation
+	API        string `json:"api"`        // https://botnet.airon.games/api/v1
+	WebUI      string `json:"webui"`      // https://botnet.airon.games
+}
+
+// RateLimitInfo defines rate limiting parameters
+type RateLimitInfo struct {
+	MessagesPerHour   int `json:"messages_per_hour"`   // 1000
+	FederationPerHour int `json:"federation_per_hour"` // 100
+}
+
+// NetworkInfo represents an aggregated view of the network (estimates only)
+type NetworkInfo struct {
+	EstimatedNodes  int    `json:"estimated_nodes"`
+	EstimatedAgents int    `json:"estimated_agents"`
+	ViewFrom        string `json:"view_from"` // Which node generated this view
+	LastUpdated     time.Time `json:"last_updated"`
+}

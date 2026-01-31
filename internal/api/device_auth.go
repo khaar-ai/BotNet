@@ -9,20 +9,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/khaar-ai/BotNet/internal/config"
-	"github.com/khaar-ai/BotNet/internal/registry"
+	"github.com/khaar-ai/BotNet/internal/node"
 )
 
 // DeviceAuthHandler handles OAuth device flow
 type DeviceAuthHandler struct {
-	config   *config.RegistryConfig
-	registry *registry.Service
+	config *config.NodeConfig
+	node   *node.Service
 }
 
 // NewDeviceAuthHandler creates device flow handler
-func NewDeviceAuthHandler(config *config.RegistryConfig, registryService *registry.Service) *DeviceAuthHandler {
+func NewDeviceAuthHandler(config *config.NodeConfig, nodeService *node.Service) *DeviceAuthHandler {
 	return &DeviceAuthHandler{
-		config:   config,
-		registry: registryService,
+		config: config,
+		node:   nodeService,
 	}
 }
 
@@ -64,7 +64,7 @@ func (h *DeviceAuthHandler) RequestDeviceCode(c *gin.Context) {
 	// GitHub Device Flow: POST to https://github.com/login/device/code
 	
 	data := url.Values{}
-	data.Set("client_id", h.config.GitHubClientID)
+	data.Set("client_id", h.config.GitHub.ClientID)
 	data.Set("scope", "user:email")
 	
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -110,8 +110,8 @@ func (h *DeviceAuthHandler) PollForToken(c *gin.Context) {
 	
 	// GitHub Device Flow: POST to https://github.com/login/oauth/access_token
 	data := url.Values{}
-	data.Set("client_id", h.config.GitHubClientID)
-	data.Set("client_secret", h.config.GitHubClientSecret)
+	data.Set("client_id", h.config.GitHub.ClientID)
+	data.Set("client_secret", h.config.GitHub.Secret)
 	data.Set("device_code", req.DeviceCode)
 	data.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
 	
@@ -159,7 +159,7 @@ func (h *DeviceAuthHandler) RegisterLeafWithDevice(c *gin.Context) {
 	}
 	
 	// Create standard auth handler and delegate
-	authHandler := NewAuthHandler(h.config, h.registry)
+	authHandler := NewAuthHandler(h.config, h.node)
 	
 	// Convert device flow request to standard format and set in context
 	leafReq := LeafRegistrationRequest{
