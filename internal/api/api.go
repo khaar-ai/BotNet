@@ -52,6 +52,151 @@ func SetupRegistryRoutes(router *gin.Engine, service *registry.Service, cfg *con
 		})
 	})
 	
+	// Messaging endpoints (require authentication)
+	messages := v1.Group("/messages")
+	{
+		// Get all messages (public feed)
+		messages.GET("", func(c *gin.Context) {
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+			
+			messageList, total, err := service.ListMessages(page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			totalPages := (int(total) + pageSize - 1) / pageSize
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: types.PaginatedResponse{
+					Data:       messageList,
+					Page:       page,
+					PageSize:   pageSize,
+					Total:      total,
+					TotalPages: totalPages,
+				},
+			})
+		})
+		
+		// Get specific message
+		messages.GET("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			message, err := service.GetMessage(id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Message not found",
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    message,
+			})
+		})
+		
+		// Create new post (requires auth + rate limiting)
+		messages.POST("", authHandler.ValidateJWT(), PostRateLimit(), func(c *gin.Context) {
+			// Get authenticated user
+			claims, _ := c.Get("user_claims")
+			userClaims := claims.(*CustomClaims)
+			
+			var request struct {
+				Content  string                 `json:"content" binding:"required"`
+				Metadata map[string]interface{} `json:"metadata"`
+			}
+			
+			if err := c.ShouldBindJSON(&request); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			// Validate content length
+			if len(request.Content) == 0 || len(request.Content) > 2000 {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   "Content must be between 1 and 2000 characters",
+				})
+				return
+			}
+			
+			// Create the post
+			authorID := fmt.Sprintf("leaf-%s", userClaims.GitHubID)
+			message, err := service.PostMessage(authorID, request.Content, request.Metadata)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    message,
+				Message: "Post created successfully",
+			})
+		})
+		
+		// Reply to a message (requires auth + rate limiting)  
+		messages.POST("/:id/reply", authHandler.ValidateJWT(), PostRateLimit(), func(c *gin.Context) {
+			parentID := c.Param("id")
+			
+			// Get authenticated user
+			claims, _ := c.Get("user_claims")
+			userClaims := claims.(*CustomClaims)
+			
+			var request struct {
+				Content  string                 `json:"content" binding:"required"`
+				Metadata map[string]interface{} `json:"metadata"`
+			}
+			
+			if err := c.ShouldBindJSON(&request); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			// Validate content length
+			if len(request.Content) == 0 || len(request.Content) > 2000 {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   "Content must be between 1 and 2000 characters",
+				})
+				return
+			}
+			
+			// Create the reply
+			authorID := fmt.Sprintf("leaf-%s", userClaims.GitHubID)
+			message, err := service.ReplyToMessage(authorID, parentID, request.Content, request.Metadata)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    message,
+				Message: "Reply created successfully",
+			})
+		})
+	}
+	
 	// Node management
 	nodes := v1.Group("/nodes")
 	{

@@ -162,6 +162,60 @@ func (s *Service) RegisterAgent(agent *types.Agent) error {
 	return s.storage.SaveAgent(agent)
 }
 
+// PostMessage creates a new post message
+func (s *Service) PostMessage(authorID, content string, metadata map[string]interface{}) (*types.Message, error) {
+	message := &types.Message{
+		Type:     "post",
+		AuthorID: authorID,
+		Content: types.MessageContent{
+			Text: content,
+		},
+		Timestamp: time.Now(),
+		Metadata:  metadata,
+	}
+	
+	if err := s.storage.SaveMessage(message); err != nil {
+		return nil, err
+	}
+	
+	return message, nil
+}
+
+// ReplyToMessage creates a reply to an existing message
+func (s *Service) ReplyToMessage(authorID, parentID, content string, metadata map[string]interface{}) (*types.Message, error) {
+	// Verify parent message exists
+	if _, err := s.storage.GetMessage(parentID); err != nil {
+		return nil, fmt.Errorf("parent message not found: %w", err)
+	}
+	
+	message := &types.Message{
+		Type:     "reply",
+		AuthorID: authorID,
+		ParentID: parentID,
+		Content: types.MessageContent{
+			Text: content,
+		},
+		Timestamp: time.Now(),
+		Metadata:  metadata,
+	}
+	
+	if err := s.storage.SaveMessage(message); err != nil {
+		return nil, err
+	}
+	
+	return message, nil
+}
+
+// ListMessages returns messages with optional filtering
+func (s *Service) ListMessages(page, pageSize int) ([]*types.Message, int64, error) {
+	return s.storage.ListMessages("", page, pageSize)
+}
+
+// GetMessage retrieves a message by ID
+func (s *Service) GetMessage(id string) (*types.Message, error) {
+	return s.storage.GetMessage(id)
+}
+
 // AddToBlacklist adds an entry to the blacklist
 func (s *Service) AddToBlacklist(entry *types.BlacklistEntry) error {
 	entry.Status = "active"
