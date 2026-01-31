@@ -45,6 +45,7 @@ type Service struct {
 	
 	// Cryptographic components for message authentication
 	keyStore       *crypto.AgentKeyStore
+	nodeKeyStore   *crypto.NodeKeyStore
 	publicKeyCache *crypto.PublicKeyCache
 	keyFetcher     *crypto.PublicKeyFetcher
 	
@@ -64,7 +65,13 @@ func New(localStorage storage.Storage, discovery *discovery.DNSService, config *
 	keysDir := filepath.Join(config.DataDir, "keys")
 	keyStore, err := crypto.NewAgentKeyStore(keysDir)
 	if err != nil {
-		log.Fatalf("Failed to initialize key store: %v", err)
+		log.Fatalf("Failed to initialize agent key store: %v", err)
+	}
+
+	// Initialize node key store for node identity
+	nodeKeyStore, err := crypto.NewNodeKeyStore(config.DataDir, config.NodeID)
+	if err != nil {
+		log.Fatalf("Failed to initialize node key store: %v", err)
 	}
 
 	publicKeyCache := crypto.NewPublicKeyCache(1 * time.Hour) // Cache keys for 1 hour
@@ -77,6 +84,7 @@ func New(localStorage storage.Storage, discovery *discovery.DNSService, config *
 		localStorage:   localStorage,
 		discovery:      discovery,
 		keyStore:       keyStore,
+		nodeKeyStore:   nodeKeyStore,
 		publicKeyCache: publicKeyCache,
 		keyFetcher:     keyFetcher,
 		config:         config,
@@ -114,18 +122,32 @@ func (s *Service) Start() error {
 
 // initializeIdentity sets up node cryptographic identity
 func (s *Service) initializeIdentity() error {
-	// TODO: Implement key generation/loading
+	// Initialize or load node Ed25519 keypair
+	keyPair, err := s.nodeKeyStore.InitializeOrLoadKeys()
+	if err != nil {
+		return fmt.Errorf("failed to initialize node keys: %v", err)
+	}
+	
+	publicKeyBase64 := keyPair.PublicKeyToBase64()
 	log.Printf("Node identity initialized for %s", s.nodeID)
+	log.Printf("Node public key: ed25519:%s", publicKeyBase64[:16]+"...")
+	
 	return nil
 }
 
 // publishNodeManifest publishes this node's manifest for DNS discovery
 func (s *Service) publishNodeManifest() error {
+	// Get node public key
+	publicKeyBase64, err := s.nodeKeyStore.GetPublicKeyBase64()
+	if err != nil {
+		return fmt.Errorf("failed to get node public key: %v", err)
+	}
+
 	// Create our node manifest
 	manifest := &types.NodeManifest{
 		NodeID:    s.nodeID,
 		Version:   "1.0.0",
-		PublicKey: fmt.Sprintf("ed25519:placeholder_%s", s.domain), // TODO: Real keys
+		PublicKey: crypto.FormatNodePublicKey(publicKeyBase64),
 		Endpoints: types.NodeEndpoints{
 			Federation: fmt.Sprintf("https://%s/federation", s.domain),
 			API:        fmt.Sprintf("https://%s/api/v1", s.domain),
@@ -136,9 +158,21 @@ func (s *Service) publishNodeManifest() error {
 			MessagesPerHour:   s.config.MessagesPerHour,
 			FederationPerHour: s.config.FederationPerHour,
 		},
-		Signature: "TODO:implement_signature",
 		UpdatedAt: time.Now(),
+		// Signature will be set by SignNodeManifest
 	}
+
+	// Sign the manifest with node's private key
+	privateKey, err := s.nodeKeyStore.GetPrivateKey()
+	if err != nil {
+		return fmt.Errorf("failed to get node private key for signing: %v", err)
+	}
+
+	if err := crypto.SignNodeManifest(manifest, privateKey); err != nil {
+		return fmt.Errorf("failed to sign node manifest: %v", err)
+	}
+
+	log.Printf("Node manifest signed successfully: signature=%s", manifest.Signature[:16]+"...")
 	
 	// Set manifest in discovery service
 	s.discovery.SetManifest(manifest)
@@ -1347,6 +1381,15 @@ func (s *Service) GetAgentPublicKey(agentID string) (string, string, error) {
 	}
 	
 	return agent.PublicKey, s.nodeID, nil
+}
+
+// GetNodePublicKey returns this node's public key in formatted form
+func (s *Service) GetNodePublicKey() (string, error) {
+	publicKeyBase64, err := s.nodeKeyStore.GetPublicKeyBase64()
+	if err != nil {
+		return "", fmt.Errorf("failed to get node public key: %v", err)
+	}
+	return crypto.FormatNodePublicKey(publicKeyBase64), nil
 }
 
 // PEER REGISTRY METHODS (acting as own registry)

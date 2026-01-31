@@ -1639,29 +1639,14 @@ func joinFeatures(features []string) string {
 
 // nodeManifestHandler serves the federation discovery manifest
 func nodeManifestHandler(c *gin.Context, service *node.Service) {
-	cfg := service.GetConfig()
-	info := service.GetNodeInfo()
-	
-	// Generate or get node public key (for now, use a placeholder)
-	// TODO: Implement proper key management
-	nodePublicKey := "ed25519:placeholder_public_key_" + cfg.Domain
-	
-	manifest := types.NodeManifest{
-		NodeID:    cfg.NodeID,
-		Version:   info.Version,
-		PublicKey: nodePublicKey,
-		Endpoints: types.NodeEndpoints{
-			Federation: fmt.Sprintf("https://%s/federation", cfg.Domain),
-			API:        fmt.Sprintf("https://%s/api/v1", cfg.Domain),
-			WebUI:      fmt.Sprintf("https://%s/", cfg.Domain),
-		},
-		Capabilities: info.Capabilities,
-		RateLimit: types.RateLimitInfo{
-			MessagesPerHour:   cfg.MessagesPerHour,
-			FederationPerHour: cfg.FederationPerHour,
-		},
-		Signature: "TODO:implement_signature",
-		UpdatedAt: time.Now(),
+	// Get the cryptographically signed manifest from the node service
+	manifest := service.GetNodeManifest()
+	if manifest == nil {
+		c.JSON(http.StatusInternalServerError, types.APIResponse{
+			Success: false,
+			Error:   "Node manifest not available",
+		})
+		return
 	}
 	
 	c.Header("Content-Type", "application/json")
