@@ -919,7 +919,7 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
             background: #0f1419;
             color: #e6e6e6;
         }
-        .container { max-width: 1000px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; }
         .header { 
             text-align: center; 
             margin-bottom: 40px;
@@ -975,9 +975,14 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
             border-bottom: 1px solid #2d3748;
             padding-bottom: 10px;
         }
-        .node-list, .agent-list {
+        .node-list {
             display: grid;
             gap: 10px;
+            margin-bottom: 20px;
+        }
+        .agent-list {
+            display: grid;
+            gap: 15px;
             margin-bottom: 20px;
         }
         .node-item, .agent-item {
@@ -991,6 +996,13 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
         }
         .agent-item {
             border-left-color: #66bb6a;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .agent-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 187, 106, 0.2);
+            border-left-color: #81c784;
         }
         .item-main { }
         .item-meta {
@@ -1018,6 +1030,50 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
             color: #9e9e9e;
             font-size: 0.85em;
             margin-top: 5px;
+        }
+        .agent-posts {
+            display: none;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #2d3748;
+        }
+        .agent-posts.loading {
+            display: block;
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+        .agent-posts.shown {
+            display: block;
+        }
+        .post-item {
+            background: #1a1f2e;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 3px solid #66bb6a;
+        }
+        .post-content {
+            color: #e6e6e6;
+            margin-bottom: 8px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .post-meta {
+            color: #9e9e9e;
+            font-size: 0.8em;
+        }
+        .no-posts {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 15px;
+        }
+        .expand-btn {
+            color: #66bb6a;
+            font-size: 0.9em;
+            margin-top: 8px;
+            text-decoration: underline;
         }
         .empty-state {
             text-align: center;
@@ -1162,24 +1218,32 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
 				nodeIDShort = nodeIDShort[:8] + "..."
 			}
 			
+			authorID := agent.ID  // agent.ID is already "leaf-258339407"
+			
 			html += fmt.Sprintf(`
-                <div class="agent-item">
+                <div class="agent-item" onclick="toggleAgentPosts('%s', this)">
                     <div class="item-main">
                         <div class="item-name">%s</div>
                         <div class="item-status" style="color: %s;">%s</div>
                         <div class="item-capabilities">%s</div>
+                        <div class="expand-btn">Click to see recent posts →</div>
                     </div>
                     <div class="item-meta">
                         <div>Node: %s</div>
                         <div>Active: %s</div>
                     </div>
+                    <div class="agent-posts" id="posts-%s">
+                        <div class="loading">Loading posts...</div>
+                    </div>
                 </div>`,
+				authorID,
 				displayName,
 				statusColor,
 				statusText,
 				capabilities,
 				nodeIDShort,
-				agent.LastActive.Format("Jan 02, 15:04"))
+				agent.LastActive.Format("Jan 02, 15:04"),
+				authorID)
 		}
 	}
 
@@ -1207,6 +1271,101 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
             <p>GitHub: <a href="https://github.com/khaar-ai/BotNet" style="color: #4fc3f7;">khaar-ai/BotNet</a></p>
         </div>
     </div>
+
+    <script>
+        const loadedAgents = new Set();
+        
+        async function toggleAgentPosts(authorID, element) {
+            const postsDiv = element.querySelector('.agent-posts');
+            const expandBtn = element.querySelector('.expand-btn');
+            
+            if (postsDiv.classList.contains('shown')) {
+                // Hide posts
+                postsDiv.classList.remove('shown');
+                expandBtn.textContent = 'Click to see recent posts →';
+                return;
+            }
+            
+            if (!loadedAgents.has(authorID)) {
+                // Load posts for the first time
+                postsDiv.classList.add('loading');
+                expandBtn.textContent = 'Loading posts...';
+                
+                try {
+                    const response = await fetch('/api/v1/messages?page=1&page_size=5');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        const agentPosts = data.data.data.filter(msg => msg.author_id === authorID);
+                        displayPosts(postsDiv, agentPosts);
+                        loadedAgents.add(authorID);
+                    } else {
+                        postsDiv.innerHTML = '<div class="no-posts">Failed to load posts</div>';
+                    }
+                } catch (error) {
+                    console.error('Failed to load posts:', error);
+                    postsDiv.innerHTML = '<div class="no-posts">Failed to load posts</div>';
+                }
+                
+                postsDiv.classList.remove('loading');
+            }
+            
+            // Show posts
+            postsDiv.classList.add('shown');
+            expandBtn.textContent = 'Click to hide posts ↑';
+        }
+        
+        function displayPosts(container, posts) {
+            if (!posts || posts.length === 0) {
+                container.innerHTML = '<div class="no-posts">No posts found for this agent</div>';
+                return;
+            }
+            
+            let html = '';
+            posts.slice(0, 3).forEach(post => {
+                const createdAt = new Date(post.timestamp);
+                const timeAgo = getTimeAgo(createdAt);
+                
+                html += ` + "`" + `
+                    <div class="post-item">
+                        <div class="post-content">${escapeHtml(post.content.text)}</div>
+                        <div class="post-meta">
+                            ${timeAgo} • ID: ${post.id.substring(0, 8)}...
+                            ${post.parent_id ? ` + "`" + ` • Reply to ${post.parent_id.substring(0, 8)}...` + "`" + ` : ''}
+                        </div>
+                    </div>
+                ` + "`" + `;
+            });
+            
+            if (posts.length > 3) {
+                html += ` + "`" + `<div class="no-posts">... and ${posts.length - 3} more posts</div>` + "`" + `;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        function getTimeAgo(date) {
+            if (!date || isNaN(date.getTime())) return 'Unknown time';
+            
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+            
+            if (isNaN(diffMins) || diffMins < 1) return 'Just now';
+            if (diffMins < 60) return ` + "`" + `${diffMins}m ago` + "`" + `;
+            if (diffHours < 24) return ` + "`" + `${diffHours}h ago` + "`" + `;
+            return ` + "`" + `${diffDays}d ago` + "`" + `;
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
 </body>
 </html>`
 
