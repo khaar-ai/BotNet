@@ -16,8 +16,8 @@ type RegistryConfig struct {
 	LogLevel       string
 	
 	// OAuth Configuration
-	GoogleClientID     string
-	GoogleClientSecret string
+	GitHubClientID     string
+	GitHubClientSecret string
 	JWTSecret          string
 	
 	// Network Configuration
@@ -76,8 +76,8 @@ func LoadRegistry() (*RegistryConfig, error) {
 		DataDir:     getEnv("DATA_DIR", "./data"),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
 		
-		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
-		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GitHubClientID:     getEnv("GITHUB_CLIENT_ID", ""),
+		GitHubClientSecret: getEnv("GITHUB_CLIENT_SECRET", ""),
 		JWTSecret:          getEnv("JWT_SECRET", ""),
 		
 		AllowedDomains: strings.Split(getEnv("ALLOWED_DOMAINS", "*"), ","),
