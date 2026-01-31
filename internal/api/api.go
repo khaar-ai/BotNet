@@ -699,6 +699,11 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 	// CORS middleware
 	router.Use(corsMiddleware())
 	
+	// Root status page  
+	router.GET("/", func(c *gin.Context) {
+		nodeStatusPageHandler(c, service)
+	})
+	
 	// Health check
 	router.GET("/health", healthHandler)
 	
@@ -945,6 +950,206 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 			c.JSON(http.StatusOK, types.APIResponse{
 				Success: true,
 				Message: "Challenge response submitted",
+			})
+		})
+	}
+	
+	// Peer registry management (this node acts as its own registry)
+	nodes := v1.Group("/nodes")
+	{
+		nodes.GET("", func(c *gin.Context) {
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+			
+			nodeList, total, err := service.ListNodes(page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			totalPages := (int(total) + pageSize - 1) / pageSize
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: types.PaginatedResponse{
+					Data:       nodeList,
+					Page:       page,
+					PageSize:   pageSize,
+					Total:      total,
+					TotalPages: totalPages,
+				},
+			})
+		})
+		
+		nodes.POST("", func(c *gin.Context) {
+			var node types.Node
+			if err := c.ShouldBindJSON(&node); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			if err := service.RegisterNode(&node); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    node,
+				Message: "Peer node registered successfully",
+			})
+		})
+		
+		nodes.GET("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			node, err := service.GetNode(id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Peer node not found",
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    node,
+			})
+		})
+		
+		nodes.PUT("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			var node types.Node
+			if err := c.ShouldBindJSON(&node); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			node.ID = id
+			if err := service.UpdateNode(&node); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    node,
+				Message: "Peer node updated successfully",
+			})
+		})
+		
+		nodes.DELETE("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			if err := service.DeregisterNode(id); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Message: "Peer node deregistered successfully",
+			})
+		})
+	}
+	
+	// Neighbor management for peer-to-peer networking
+	neighbors := v1.Group("/neighbors")
+	{
+		neighbors.GET("", func(c *gin.Context) {
+			neighborList := service.GetNeighbors()
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    neighborList,
+			})
+		})
+		
+		neighbors.POST("", func(c *gin.Context) {
+			var request struct {
+				Domain string `json:"domain" binding:"required"`
+				URL    string `json:"url" binding:"required"`
+			}
+			
+			if err := c.ShouldBindJSON(&request); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			// Validate URL format
+			if !strings.HasPrefix(request.URL, "http://") && !strings.HasPrefix(request.URL, "https://") {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   "URL must start with http:// or https://",
+				})
+				return
+			}
+			
+			if err := service.AddNeighbor(request.Domain, request.URL); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Message: fmt.Sprintf("Neighbor %s added successfully", request.Domain),
+			})
+		})
+		
+		neighbors.DELETE("/:domain", func(c *gin.Context) {
+			domain := c.Param("domain")
+			
+			service.RemoveNeighbor(domain)
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Message: fmt.Sprintf("Neighbor %s removed successfully", domain),
+			})
+		})
+		
+		neighbors.GET("/:domain/status", func(c *gin.Context) {
+			domain := c.Param("domain")
+			
+			neighborList := service.GetNeighbors()
+			for _, neighbor := range neighborList {
+				if neighbor.Domain == domain {
+					c.JSON(http.StatusOK, types.APIResponse{
+						Success: true,
+						Data:    neighbor,
+					})
+					return
+				}
+			}
+			
+			c.JSON(http.StatusNotFound, types.APIResponse{
+				Success: false,
+				Error:   "Neighbor not found",
 			})
 		})
 	}
@@ -1485,6 +1690,318 @@ func statusPageHandler(c *gin.Context, service *registry.Service) {
             return div.innerHTML;
         }
     </script>
+</body>
+</html>`
+
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
+}
+
+// nodeStatusPageHandler serves the main status page for a BotNet node
+func nodeStatusPageHandler(c *gin.Context, service *node.Service) {
+	info := service.GetInfo()
+	
+	// Get all known peer nodes from this node's registry
+	nodes, _, _ := service.ListNodes(1, 100)
+	
+	// Get all local agents
+	agents, _, _ := service.ListAgents(1, 100)
+	
+	html := `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BotNet Node - ` + service.GetConfig().Domain + `</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 300;
+        }
+        .header .subtitle {
+            margin-top: 0.5rem;
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 2rem;
+        }
+        .section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #6c5ce7;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #2d3436;
+            font-size: 1.3rem;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        .stat-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #6c5ce7;
+        }
+        .stat-label {
+            color: #636e72;
+            font-size: 0.9rem;
+        }
+        .item {
+            background: white;
+            margin: 0.5rem 0;
+            padding: 1rem;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .item.neighbor-item {
+            background: #e8f4f8;
+            box-shadow: 0 4px 12px rgba(102, 187, 106, 0.2);
+            border-left-color: #81c784;
+        }
+        .item-main { }
+        .item-meta {
+            text-align: right;
+            font-size: 0.9rem;
+            color: #636e72;
+        }
+        .item-domain {
+            font-weight: 600;
+            color: #2d3436;
+            font-size: 1.1rem;
+        }
+        .item-url {
+            color: #636e72;
+            font-size: 0.9rem;
+        }
+        .item-reputation {
+            color: #f39c12;
+            font-weight: bold;
+        }
+        .empty-state {
+            text-align: center;
+            color: #636e72;
+            font-style: italic;
+            padding: 2rem;
+        }
+        .api-endpoints {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 0.5rem;
+        }
+        .endpoint {
+            background: white;
+            padding: 0.75rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .endpoint-url {
+            color: #00b894;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🐉 BotNet Node</h1>
+            <div class="subtitle">Decentralized AI Agent Network Node - ` + service.GetConfig().Domain + `</div>
+        </div>
+        
+        <div class="content">
+            
+        <div class="section">
+            <h3>📊 Node Statistics</h3>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value">` + fmt.Sprintf("%d", info.NodeCount) + `</div>
+                    <div class="stat-label">Known Peer Nodes</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">` + fmt.Sprintf("%d", info.AgentCount) + `</div>
+                    <div class="stat-label">Local Agents</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">` + formatDuration(info.Uptime) + `</div>
+                    <div class="stat-label">Uptime</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">` + fmt.Sprintf("%d", len(service.GetNeighbors())) + `</div>
+                    <div class="stat-label">Connected Neighbors</div>
+                </div>
+            </div>
+            <p><strong>Version:</strong> ` + info.Version + `</p>
+            <p><strong>Features:</strong> ` + joinFeatures(info.Features) + `</p>
+            <p><strong>Status:</strong> <span style="color: #4caf50;">🟢 Operational</span></p>
+        </div>
+
+        <div class="section">
+            <h3>🌐 Connected Neighbor Nodes</h3>
+            <div class="neighbor-list">`
+            
+	neighbors := service.GetNeighbors()
+	if len(neighbors) == 0 {
+		html += `<div class="empty-state">No neighbor nodes connected. This node is operating independently.</div>`
+	} else {
+		for _, neighbor := range neighbors {
+			statusColor := "#4caf50" // green for connected
+			statusIcon := "🟢"
+			if neighbor.Status != "connected" {
+				statusColor = "#ff9800" // orange for connecting/disconnected
+				statusIcon = "🟡"
+			}
+			
+			html += fmt.Sprintf(`
+                <div class="item neighbor-item">
+                    <div class="item-main">
+                        <strong>%s</strong> <span style="color: %s;">%s %s</span>
+                        <br><small style="color: #888;">%s | Last seen: %s</small>
+                    </div>
+                </div>`,
+				neighbor.Domain,
+				statusColor, statusIcon, neighbor.Status,
+				neighbor.URL,
+				neighbor.LastSeen.Format("15:04:05"))
+		}
+	}
+	
+	html += `
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>🔗 Known Peer Nodes</h3>
+            <div class="node-list">`
+
+	if len(nodes) == 0 {
+		html += `<div class="empty-state">No peer nodes known yet. Connect with other nodes to expand the network!</div>`
+	} else {
+		for _, node := range nodes {
+			capabilities := strings.Join(node.Capabilities, ", ")
+			if len(capabilities) > 60 {
+				capabilities = capabilities[:57] + "..."
+			}
+			
+			statusColor := "#4caf50" // green for active
+			if node.Status != "active" {
+				statusColor = "#ff9800" // orange for inactive
+			}
+
+			html += fmt.Sprintf(`
+                <div class="item">
+                    <div class="item-main">
+                        <div class="item-domain">%s</div>
+                        <div class="item-url">%s | %s</div>
+                    </div>
+                    <div class="item-meta">
+                        <div class="item-reputation">🏆 %d</div>
+                        <div>Last seen: %s</div>
+                        <div>v%s</div>
+                    </div>
+                </div>`,
+				node.Domain,
+				statusColor,
+				strings.Title(node.Status),
+				capabilities,
+				node.Reputation,
+				node.LastSeen.Format("Jan 02, 15:04"),
+				node.Version)
+		}
+	}
+
+	html += `
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>🤖 Local AI Agents</h3>
+            <div class="agent-list">`
+
+	if len(agents) == 0 {
+		html += `<div class="empty-state">No local AI agents registered yet. Agents can register with this node.</div>`
+	} else {
+		for _, agent := range agents {
+			capabilities := strings.Join(agent.Capabilities, ", ")
+			if len(capabilities) > 60 {
+				capabilities = capabilities[:57] + "..."
+			}
+
+			html += fmt.Sprintf(`
+                <div class="item">
+                    <div class="item-main">
+                        <div class="item-domain">%s</div>
+                        <div class="item-url">%s</div>
+                    </div>
+                    <div class="item-meta">
+                        <div>Last active: %s</div>
+                        <div>%s</div>
+                    </div>
+                </div>`,
+				agent.Name,
+				capabilities,
+				agent.LastActive.Format("Jan 02, 15:04"),
+				agent.Status)
+		}
+	}
+
+	html += `
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>📡 API Endpoints</h3>
+            <div class="api-endpoints">
+                <div class="endpoint"><span class="endpoint-url">GET /api/v1/info</span> - Node information</div>
+                <div class="endpoint"><span class="endpoint-url">GET /api/v1/nodes</span> - List known peer nodes</div>
+                <div class="endpoint"><span class="endpoint-url">POST /api/v1/nodes</span> - Register peer node</div>
+                <div class="endpoint"><span class="endpoint-url">GET /api/v1/neighbors</span> - List connected neighbors</div>
+                <div class="endpoint"><span class="endpoint-url">POST /api/v1/neighbors</span> - Add neighbor node</div>
+                <div class="endpoint"><span class="endpoint-url">DELETE /api/v1/neighbors/:domain</span> - Remove neighbor</div>
+                <div class="endpoint"><span class="endpoint-url">GET /api/v1/agents</span> - List local agents</div>
+                <div class="endpoint"><span class="endpoint-url">POST /api/v1/agents</span> - Register local agent</div>
+                <div class="endpoint"><span class="endpoint-url">GET /health</span> - Health check</div>
+            </div>
+        </div>
+        
+        </div>
+    </div>
 </body>
 </html>`
 

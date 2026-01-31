@@ -49,26 +49,33 @@ func New(storage storage.Storage, config *config.NodeConfig) *Service {
 	}
 }
 
-// GetInfo returns node information
-func (s *Service) GetInfo() map[string]interface{} {
+// GetInfo returns node information (acting as its own registry)
+func (s *Service) GetInfo() *types.RegistryInfo {
 	agents, _, _ := s.storage.ListAgents("", 1, 1000) // Get all local agents
-	messages, _, _ := s.storage.ListMessages("", 1, 1000) // Get all messages
 	
-	return map[string]interface{}{
-		"node_id":      s.config.NodeID,
-		"domain":       s.config.Domain,
-		"version":      "1.0.0",
-		"uptime":       time.Since(s.startTime),
-		"agent_count":  len(agents),
-		"message_count": len(messages),
-		"status":       "active",
-		"capabilities": []string{"messaging", "agent_hosting", "challenges", "replication"},
-		"features": map[string]bool{
-			"agents":        s.config.EnableAgent,
-			"replication":   s.config.EnableReplication,
-			"micropayments": s.config.EnableMicropayments,
+	// Get peer nodes from neighbors
+	peerCount := len(s.neighbors)
+	
+	return &types.RegistryInfo{
+		Version:    "1.0.0",
+		NodeCount:  peerCount,
+		AgentCount: len(agents),
+		Uptime:     time.Since(s.startTime),
+		LastSync:   time.Now(),
+		Features: []string{
+			"peer_discovery",
+			"agent_registry", 
+			"domain_verification",
+			"decentralized_messaging",
+			"neighbor_networking",
+			"proof_of_intelligence_handshakes",
 		},
 	}
+}
+
+// GetConfig returns the node configuration
+func (s *Service) GetConfig() *config.NodeConfig {
+	return s.config
 }
 
 // RegisterWithRegistry registers this node with the central registry
@@ -552,4 +559,71 @@ func (s *Service) broadcastToNeighbors(endpoint string, data interface{}) {
 // generateNeighborID creates a unique ID for a neighbor
 func generateNeighborID(domain string) string {
 	return fmt.Sprintf("neighbor-%s-%d", domain, time.Now().Unix())
+}
+
+// PEER REGISTRY METHODS (acting as own registry)
+
+// RegisterNode registers a peer node in this node's local registry
+func (s *Service) RegisterNode(node *types.Node) error {
+	// Check for domain conflicts
+	existingNodes, _, _ := s.storage.ListNodes(1, 1000)
+	
+	for _, existing := range existingNodes {
+		if existing.Domain == node.Domain && existing.ID != node.ID {
+			return fmt.Errorf("domain already registered: %s", node.Domain)
+		}
+	}
+	
+	// Check blacklist
+	if s.storage.IsBlacklisted("domain", node.Domain) {
+		return fmt.Errorf("domain is blacklisted: %s", node.Domain)
+	}
+	
+	if s.storage.IsBlacklisted("node", node.ID) {
+		return fmt.Errorf("node is blacklisted: %s", node.ID)
+	}
+	
+	// Set default values
+	node.Status = "active"
+	node.LastSeen = time.Now()
+	
+	if node.Version == "" {
+		node.Version = "1.0.0"
+	}
+	
+	if node.Capabilities == nil {
+		node.Capabilities = []string{"messaging", "agent_hosting"}
+	}
+	
+	return s.storage.SaveNode(node)
+}
+
+// ListNodes returns all known peer nodes from this node's registry
+func (s *Service) ListNodes(page, pageSize int) ([]*types.Node, int64, error) {
+	return s.storage.ListNodes(page, pageSize)
+}
+
+// GetNode returns a specific peer node from this node's registry
+func (s *Service) GetNode(id string) (*types.Node, error) {
+	return s.storage.GetNode(id)
+}
+
+// UpdateNode updates a peer node in this node's registry
+func (s *Service) UpdateNode(node *types.Node) error {
+	// Check if node exists
+	existing, err := s.storage.GetNode(node.ID)
+	if err != nil {
+		return fmt.Errorf("node not found: %s", node.ID)
+	}
+	
+	// Preserve certain fields
+	node.CreatedAt = existing.CreatedAt
+	node.LastSeen = time.Now()
+	
+	return s.storage.SaveNode(node)
+}
+
+// DeregisterNode removes a peer node from this node's registry
+func (s *Service) DeregisterNode(id string) error {
+	return s.storage.DeleteNode(id)
 }
