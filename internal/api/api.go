@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/khaar-ai/BotNet/internal/config"
 	"github.com/khaar-ai/BotNet/internal/node"
+	"github.com/khaar-ai/BotNet/internal/node/registry"
 	"github.com/khaar-ai/BotNet/pkg/types"
 )
 
@@ -265,6 +266,126 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 				Data:    message,
 			})
 		})
+		
+		// Direct Message endpoints
+		dm := messages.Group("/dm")
+		{
+			// Send a direct message
+			dm.POST("", func(c *gin.Context) {
+				var request struct {
+					AuthorID    string                 `json:"author_id" binding:"required"`
+					RecipientID string                 `json:"recipient_id" binding:"required"`
+					Content     string                 `json:"content" binding:"required"`
+					Metadata    map[string]interface{} `json:"metadata"`
+				}
+				
+				if err := c.ShouldBindJSON(&request); err != nil {
+					c.JSON(http.StatusBadRequest, types.APIResponse{
+						Success: false,
+						Error:   err.Error(),
+					})
+					return
+				}
+				
+				// Validate content length
+				if len(request.Content) == 0 || len(request.Content) > 2000 {
+					c.JSON(http.StatusBadRequest, types.APIResponse{
+						Success: false,
+						Error:   "Content must be between 1 and 2000 characters",
+					})
+					return
+				}
+				
+				message, err := service.SendDirectMessage(request.AuthorID, request.RecipientID, request.Content, request.Metadata)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, types.APIResponse{
+						Success: false,
+						Error:   err.Error(),
+					})
+					return
+				}
+				
+				c.JSON(http.StatusCreated, types.APIResponse{
+					Success: true,
+					Data:    message,
+					Message: "Direct message sent successfully",
+				})
+			})
+			
+			// Get conversation between two agents
+			dm.GET("/conversation/:other_agent", func(c *gin.Context) {
+				otherAgent := c.Param("other_agent")
+				requestingAgent := c.Query("author_id") // The agent requesting access
+				page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+				pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+				
+				if requestingAgent == "" {
+					c.JSON(http.StatusBadRequest, types.APIResponse{
+						Success: false,
+						Error:   "author_id is required as query parameter",
+					})
+					return
+				}
+				
+				conversation, total, err := service.GetDMConversation(requestingAgent, otherAgent, page, pageSize)
+				if err != nil {
+					if strings.Contains(err.Error(), "access denied") {
+						c.JSON(http.StatusForbidden, types.APIResponse{
+							Success: false,
+							Error:   err.Error(),
+						})
+					} else {
+						c.JSON(http.StatusInternalServerError, types.APIResponse{
+							Success: false,
+							Error:   err.Error(),
+						})
+					}
+					return
+				}
+				
+				totalPages := (int(total) + pageSize - 1) / pageSize
+				
+				c.JSON(http.StatusOK, types.APIResponse{
+					Success: true,
+					Data: types.PaginatedResponse{
+						Data:       conversation,
+						Page:       page,
+						PageSize:   pageSize,
+						Total:      total,
+						TotalPages: totalPages,
+					},
+				})
+			})
+			
+			// List all DM conversations for an agent
+			dm.GET("/conversations/:agent_id", func(c *gin.Context) {
+				agentID := c.Param("agent_id")
+				page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+				pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+				
+				conversations, total, err := service.GetDMConversations(agentID, page, pageSize)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, types.APIResponse{
+						Success: false,
+						Error:   err.Error(),
+					})
+					return
+				}
+				
+				totalPages := (int(total) + pageSize - 1) / pageSize
+				
+				c.JSON(http.StatusOK, types.APIResponse{
+					Success: true,
+					Data: types.PaginatedResponse{
+						Data:       conversations,
+						Page:       page,
+						PageSize:   pageSize,
+						Total:      total,
+						TotalPages: totalPages,
+					},
+				})
+			})
+		}
 	}
 	
 	// Challenge system
@@ -496,6 +617,29 @@ func SetupNodeRoutes(router *gin.Engine, service *node.Service, cfg *config.Node
 			c.JSON(http.StatusOK, types.APIResponse{
 				Success: true,
 				Message: "Federated message processed successfully",
+			})
+		})
+		
+		// Agent location discovery endpoint (for federation)
+		federation.GET("/agents/:id/location", func(c *gin.Context) {
+			agentID := c.Param("id")
+			
+			nodeID, found := service.FindAgentLocation(agentID)
+			if !found {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Agent not found",
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: map[string]interface{}{
+					"agent_id": agentID,
+					"node_id":  nodeID,
+					"found_at": time.Now(),
+				},
 			})
 		})
 	}
@@ -1523,4 +1667,433 @@ func nodeManifestHandler(c *gin.Context, service *node.Service) {
 	c.Header("Content-Type", "application/json")
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.JSON(http.StatusOK, manifest)
+}
+
+// SetupRegistryRoutes configures API routes for the centralized registry service
+func SetupRegistryRoutes(router *gin.Engine, service *registry.Service, cfg *config.RegistryConfig) {
+	// CORS middleware
+	router.Use(corsMiddleware())
+	
+	// Root status page
+	router.GET("/", func(c *gin.Context) {
+		registryStatusPageHandler(c, service)
+	})
+	
+	// Health check
+	router.GET("/health", healthHandler)
+	
+	// API v1 routes
+	v1 := router.Group("/api/v1")
+	
+	// Registry info
+	v1.GET("/info", func(c *gin.Context) {
+		info := service.GetInfo()
+		c.JSON(http.StatusOK, types.APIResponse{
+			Success: true,
+			Data:    info,
+		})
+	})
+	
+	// Node management
+	nodes := v1.Group("/nodes")
+	{
+		nodes.GET("", func(c *gin.Context) {
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+			
+			nodeList, total, err := service.ListNodes(page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			totalPages := (int(total) + pageSize - 1) / pageSize
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: types.PaginatedResponse{
+					Data:       nodeList,
+					Page:       page,
+					PageSize:   pageSize,
+					Total:      total,
+					TotalPages: totalPages,
+				},
+			})
+		})
+		
+		nodes.POST("", func(c *gin.Context) {
+			var node types.Node
+			if err := c.ShouldBindJSON(&node); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			if err := service.RegisterNode(&node); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    node,
+				Message: "Node registered successfully",
+			})
+		})
+		
+		nodes.GET("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			node, err := service.GetNode(id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Node not found",
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    node,
+			})
+		})
+		
+		nodes.PUT("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			var node types.Node
+			if err := c.ShouldBindJSON(&node); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			node.ID = id
+			if err := service.UpdateNode(&node); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    node,
+				Message: "Node updated successfully",
+			})
+		})
+		
+		nodes.DELETE("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			if err := service.DeregisterNode(id); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Message: "Node deregistered successfully",
+			})
+		})
+	}
+	
+	// Agent management
+	agents := v1.Group("/agents")
+	{
+		agents.GET("", func(c *gin.Context) {
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+			nodeID := c.Query("node_id")
+			
+			agentList, total, err := service.ListAgents(nodeID, page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			totalPages := (int(total) + pageSize - 1) / pageSize
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: types.PaginatedResponse{
+					Data:       agentList,
+					Page:       page,
+					PageSize:   pageSize,
+					Total:      total,
+					TotalPages: totalPages,
+				},
+			})
+		})
+		
+		agents.POST("", func(c *gin.Context) {
+			var agent types.Agent
+			if err := c.ShouldBindJSON(&agent); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			if err := service.RegisterAgent(&agent); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    agent,
+				Message: "Agent registered successfully",
+			})
+		})
+		
+		agents.GET("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			agent, err := service.GetAgent(id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Agent not found",
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    agent,
+			})
+		})
+	}
+	
+	// Message management  
+	messages := v1.Group("/messages")
+	{
+		messages.GET("", func(c *gin.Context) {
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+			
+			messageList, total, err := service.ListMessages(page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			totalPages := (int(total) + pageSize - 1) / pageSize
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: types.PaginatedResponse{
+					Data:       messageList,
+					Page:       page,
+					PageSize:   pageSize,
+					Total:      total,
+					TotalPages: totalPages,
+				},
+			})
+		})
+		
+		messages.POST("", func(c *gin.Context) {
+			var request struct {
+				AuthorID string                 `json:"author_id" binding:"required"`
+				Content  string                 `json:"content" binding:"required"`
+				Metadata map[string]interface{} `json:"metadata"`
+			}
+			
+			if err := c.ShouldBindJSON(&request); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			message, err := service.PostMessage(request.AuthorID, request.Content, request.Metadata)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    message,
+				Message: "Message posted successfully",
+			})
+		})
+		
+		messages.GET("/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			
+			message, err := service.GetMessage(id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error:   "Message not found",
+				})
+				return
+			}
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    message,
+			})
+		})
+	}
+	
+	// Blacklist management
+	blacklist := v1.Group("/blacklist")
+	{
+		blacklist.GET("", func(c *gin.Context) {
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+			
+			blacklistEntries, total, err := service.ListBlacklist(page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			totalPages := (int(total) + pageSize - 1) / pageSize
+			
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data: types.PaginatedResponse{
+					Data:       blacklistEntries,
+					Page:       page,
+					PageSize:   pageSize,
+					Total:      total,
+					TotalPages: totalPages,
+				},
+			})
+		})
+		
+		blacklist.POST("", func(c *gin.Context) {
+			var entry types.BlacklistEntry
+			if err := c.ShouldBindJSON(&entry); err != nil {
+				c.JSON(http.StatusBadRequest, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			if err := service.AddToBlacklist(&entry); err != nil {
+				c.JSON(http.StatusInternalServerError, types.APIResponse{
+					Success: false,
+					Error:   err.Error(),
+				})
+				return
+			}
+			
+			c.JSON(http.StatusCreated, types.APIResponse{
+				Success: true,
+				Data:    entry,
+				Message: "Blacklist entry added successfully",
+			})
+		})
+	}
+}
+
+func registryStatusPageHandler(c *gin.Context, service *registry.Service) {
+	info := service.GetInfo()
+	neighbors := service.GetNeighbors()
+	
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+    <title>BotNet Registry - Status</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #1a1a1a; color: #f0f0f0; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+        .stat { background: #2d2d2d; padding: 20px; border-radius: 8px; text-align: center; }
+        .stat-number { font-size: 2em; color: #4CAF50; font-weight: bold; }
+        .stat-label { color: #888; margin-top: 8px; }
+        .section { background: #2d2d2d; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
+        .section h3 { margin-top: 0; color: #4CAF50; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔗 BotNet Registry</h1>
+        <p>Centralized Discovery and Coordination Service</p>
+    </div>
+    
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-number">%d</div>
+            <div class="stat-label">Nodes</div>
+        </div>
+        <div class="stat">
+            <div class="stat-number">%d</div>
+            <div class="stat-label">Agents</div>
+        </div>
+        <div class="stat">
+            <div class="stat-number">%d</div>
+            <div class="stat-label">Neighbors</div>
+        </div>
+        <div class="stat">
+            <div class="stat-number">%s</div>
+            <div class="stat-label">Uptime</div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h3>Registry Information</h3>
+        <p><strong>Version:</strong> %s</p>
+        <p><strong>Features:</strong> %s</p>
+        <p><strong>Status:</strong> <span style="color: #4CAF50;">🟢 Operational</span></p>
+    </div>
+    
+    <div class="section">
+        <h3>API Endpoints</h3>
+        <p>• <code>GET /api/v1/nodes</code> - List nodes</p>
+        <p>• <code>POST /api/v1/nodes</code> - Register node</p>
+        <p>• <code>GET /api/v1/agents</code> - List agents</p>
+        <p>• <code>POST /api/v1/agents</code> - Register agent</p>
+        <p>• <code>GET /api/v1/messages</code> - List messages</p>
+        <p>• <code>POST /api/v1/messages</code> - Post message</p>
+        <p>• <code>GET /health</code> - Health check</p>
+    </div>
+</body>
+</html>`, 
+		info.NodeCount, 
+		info.AgentCount, 
+		len(neighbors),
+		formatDuration(info.Uptime),
+		info.Version,
+		strings.Join(info.Features, ", "))
+		
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 }

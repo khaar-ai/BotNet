@@ -33,6 +33,10 @@ type Storage interface {
 	ListMessages(recipientID string, page, pageSize int) ([]*types.Message, int64, error)
 	DeleteMessage(id string) error
 	
+	// Direct Message operations
+	GetDMConversation(agent1, agent2 string, page, pageSize int) ([]*types.Message, int64, error)
+	GetDMConversations(agentID string, page, pageSize int) ([]map[string]interface{}, int64, error)
+	
 	// Challenge operations
 	SaveChallenge(challenge *types.Challenge) error
 	GetChallenge(id string) (*types.Challenge, error)
@@ -294,6 +298,12 @@ func (fs *FileSystem) ListMessages(recipientID string, page, pageSize int) ([]*t
 	for _, filename := range files {
 		var message types.Message
 		if err := fs.loadFromFile("messages", filename, &message); err == nil {
+			// PRIVACY: Exclude DMs from general message listing - DMs should only be accessed via DM endpoints
+			if message.Type == "dm" {
+				continue
+			}
+			
+			// Include public messages (post, reply, etc.)
 			if recipientID == "" || message.RecipientID == recipientID || message.AuthorID == recipientID {
 				filteredMessages = append(filteredMessages, &message)
 			}
@@ -318,6 +328,111 @@ func (fs *FileSystem) DeleteMessage(id string) error {
 	filename := fmt.Sprintf("%s.json", id)
 	path := filepath.Join(fs.dataDir, "messages", filename)
 	return os.Remove(path)
+}
+
+// GetDMConversation returns direct messages between two specific agents
+func (fs *FileSystem) GetDMConversation(agent1, agent2 string, page, pageSize int) ([]*types.Message, int64, error) {
+	files, err := fs.listFiles("messages")
+	if err != nil {
+		return nil, 0, err
+	}
+	
+	var conversationMessages []*types.Message
+	for _, filename := range files {
+		var message types.Message
+		if err := fs.loadFromFile("messages", filename, &message); err == nil {
+			// Check if this is a DM between the two agents
+			if message.Type == "dm" &&
+			   ((message.AuthorID == agent1 && message.RecipientID == agent2) ||
+			    (message.AuthorID == agent2 && message.RecipientID == agent1)) {
+				conversationMessages = append(conversationMessages, &message)
+			}
+		}
+	}
+	
+	// Sort messages by timestamp (oldest first)
+	sort.Slice(conversationMessages, func(i, j int) bool {
+		return conversationMessages[i].Timestamp.Before(conversationMessages[j].Timestamp)
+	})
+	
+	total := int64(len(conversationMessages))
+	start := (page - 1) * pageSize
+	if start >= len(conversationMessages) {
+		return []*types.Message{}, total, nil
+	}
+	
+	end := start + pageSize
+	if end > len(conversationMessages) {
+		end = len(conversationMessages)
+	}
+	
+	return conversationMessages[start:end], total, nil
+}
+
+// GetDMConversations returns a list of all DM conversations for an agent with preview of latest message
+func (fs *FileSystem) GetDMConversations(agentID string, page, pageSize int) ([]map[string]interface{}, int64, error) {
+	files, err := fs.listFiles("messages")
+	if err != nil {
+		return nil, 0, err
+	}
+	
+	// Map to store latest message for each conversation partner
+	conversations := make(map[string]*types.Message)
+	
+	for _, filename := range files {
+		var message types.Message
+		if err := fs.loadFromFile("messages", filename, &message); err == nil {
+			// Check if this is a DM involving the specified agent
+			if message.Type == "dm" &&
+			   (message.AuthorID == agentID || message.RecipientID == agentID) {
+				
+				// Determine the conversation partner
+				var partnerID string
+				if message.AuthorID == agentID {
+					partnerID = message.RecipientID
+				} else {
+					partnerID = message.AuthorID
+				}
+				
+				// Keep only the latest message for each conversation
+				if existing, exists := conversations[partnerID]; !exists || message.Timestamp.After(existing.Timestamp) {
+					conversations[partnerID] = &message
+				}
+			}
+		}
+	}
+	
+	// Convert to slice and add conversation metadata
+	var conversationList []map[string]interface{}
+	for partnerID, latestMessage := range conversations {
+		conversation := map[string]interface{}{
+			"partner_id":      partnerID,
+			"latest_message":  latestMessage.Content.Text,
+			"latest_timestamp": latestMessage.Timestamp,
+			"latest_author":   latestMessage.AuthorID,
+		}
+		conversationList = append(conversationList, conversation)
+	}
+	
+	// Sort conversations by latest message timestamp (newest first)
+	sort.Slice(conversationList, func(i, j int) bool {
+		timeI := conversationList[i]["latest_timestamp"].(time.Time)
+		timeJ := conversationList[j]["latest_timestamp"].(time.Time)
+		return timeI.After(timeJ)
+	})
+	
+	total := int64(len(conversationList))
+	start := (page - 1) * pageSize
+	if start >= len(conversationList) {
+		return []map[string]interface{}{}, total, nil
+	}
+	
+	end := start + pageSize
+	if end > len(conversationList) {
+		end = len(conversationList)
+	}
+	
+	return conversationList[start:end], total, nil
 }
 
 // Challenge operations

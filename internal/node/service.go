@@ -534,7 +534,7 @@ func (s *Service) GetMessage(id string) (*types.Message, error) {
 	return s.localStorage.GetMessage(id)
 }
 
-// ListMessages returns a paginated list of messages
+// ListMessages returns a paginated list of messages with DM privacy filtering
 func (s *Service) ListMessages(recipientID string, page, pageSize int) ([]*types.Message, int64, error) {
 	return s.localStorage.ListMessages(recipientID, page, pageSize)
 }
@@ -631,6 +631,242 @@ func (s *Service) RespondToChallenge(challengeID, answer string) error {
 // ListChallenges returns a paginated list of challenges
 func (s *Service) ListChallenges(targetID, status string, page, pageSize int) ([]*types.Challenge, int64, error) {
 	return s.localStorage.ListChallenges(targetID, status, page, pageSize)
+}
+
+// DIRECT MESSAGING SYSTEM
+
+// SendDirectMessage creates and sends a direct message between agents
+func (s *Service) SendDirectMessage(authorID, recipientID, content string, metadata map[string]interface{}) (*types.Message, error) {
+	// Validate that sender is a local agent
+	_, err := s.localStorage.GetAgent(authorID)
+	if err != nil {
+		return nil, fmt.Errorf("sender agent not found on this node: %s", authorID)
+	}
+	
+	// Validate recipient exists on the network
+	recipientNodeID, found := s.findAgentNode(recipientID)
+	if !found {
+		return nil, fmt.Errorf("recipient agent not found on network: %s", recipientID)
+	}
+	
+	// Create the direct message
+	message := &types.Message{
+		Type:        "dm",
+		AuthorID:    authorID,
+		RecipientID: recipientID,
+		Content: types.MessageContent{
+			Text: content,
+		},
+		Timestamp: time.Now(),
+		Metadata:  metadata,
+	}
+	
+	// Sign the message with sender's private key
+	privateKey, err := s.keyStore.GetPrivateKey(authorID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get private key for agent %s: %v", authorID, err)
+	}
+	
+	if err := crypto.SignMessage(message, privateKey); err != nil {
+		return nil, fmt.Errorf("failed to sign message: %v", err)
+	}
+	
+	log.Printf("DM: Signed message from %s to %s", authorID, recipientID)
+	
+	// Save message locally (for sender's copy)
+	if err := s.localStorage.SaveMessage(message); err != nil {
+		return nil, fmt.Errorf("failed to save message locally: %v", err)
+	}
+	
+	// Deliver message to recipient's node
+	if recipientNodeID == s.nodeID {
+		// Local delivery - message already saved above
+		log.Printf("DM: Local delivery from %s to %s", authorID, recipientID)
+	} else {
+		// Remote delivery via federation
+		go s.deliverDirectMessage(message, recipientNodeID)
+	}
+	
+	return message, nil
+}
+
+// deliverDirectMessage delivers a DM to a specific remote node
+func (s *Service) deliverDirectMessage(message *types.Message, targetNodeID string) {
+	// Find neighbor node that can route to the target
+	targetNeighbor := s.findNeighborForNode(targetNodeID)
+	if targetNeighbor == nil {
+		log.Printf("DM: Cannot find route to node %s for message delivery", targetNodeID)
+		return
+	}
+	
+	// Send directly to the target neighbor (targeted delivery, not broadcast)
+	s.sendMessageToNeighbor(targetNeighbor, message)
+	log.Printf("DM: Attempted delivery to node %s via %s", targetNodeID, targetNeighbor.ID)
+}
+
+// findNeighborForNode finds which neighbor can route to a target node
+func (s *Service) findNeighborForNode(targetNodeID string) *NeighborNode {
+	s.neighborMutex.RLock()
+	defer s.neighborMutex.RUnlock()
+	
+	// For now, try the first active neighbor - in a real implementation,
+	// this would use routing tables or DHT-like discovery
+	for _, neighbor := range s.neighbors {
+		if neighbor.Status == "active" {
+			return neighbor
+		}
+	}
+	
+	return nil
+}
+
+// findAgentNode locates which node hosts a specific agent
+func (s *Service) findAgentNode(agentID string) (string, bool) {
+	// First check if agent is local
+	agent, err := s.localStorage.GetAgent(agentID)
+	if err == nil {
+		return agent.NodeID, true
+	}
+	
+	// Query neighbors via federation API to find the agent
+	s.neighborMutex.RLock()
+	neighbors := make([]*NeighborNode, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		if neighbor.Status == "active" {
+			neighbors = append(neighbors, neighbor)
+		}
+	}
+	s.neighborMutex.RUnlock()
+	
+	// Check with each neighbor for agent location
+	for _, neighbor := range neighbors {
+		if nodeID, found := s.queryNeighborForAgentLocation(neighbor, agentID); found {
+			// Cache the result for future lookups
+			s.cacheAgentLocation(agentID, nodeID)
+			return nodeID, true
+		}
+	}
+	
+	return "", false
+}
+
+// queryNeighborForAgentLocation asks a neighbor if they know where an agent is located
+func (s *Service) queryNeighborForAgentLocation(neighbor *NeighborNode, agentID string) (string, bool) {
+	// Use the federation endpoint for agent location discovery
+	locationURL := fmt.Sprintf("%s/federation/agents/%s/location", neighbor.URL, agentID)
+	
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	
+	req, err := http.NewRequest("GET", locationURL, nil)
+	if err != nil {
+		return "", false
+	}
+	
+	req.Header.Set("User-Agent", fmt.Sprintf("BotNet-Node/%s", s.nodeID))
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode == http.StatusNotFound {
+		return "", false // Agent not found on this neighbor
+	}
+	
+	if resp.StatusCode != http.StatusOK {
+		return "", false
+	}
+	
+	var apiResponse types.APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return "", false
+	}
+	
+	if !apiResponse.Success {
+		return "", false
+	}
+	
+	// Extract node_id from response
+	data, ok := apiResponse.Data.(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+	
+	nodeID, ok := data["node_id"].(string)
+	if !ok {
+		return "", false
+	}
+	
+	return nodeID, true
+}
+
+// cacheAgentLocation caches agent location for performance (simple in-memory cache)
+var agentLocationCache = make(map[string]string)
+var agentLocationMutex sync.RWMutex
+
+func (s *Service) cacheAgentLocation(agentID, nodeID string) {
+	agentLocationMutex.Lock()
+	defer agentLocationMutex.Unlock()
+	agentLocationCache[agentID] = nodeID
+	
+	// Simple cache eviction - remove entries after 1000 items
+	if len(agentLocationCache) > 1000 {
+		// Clear half the cache
+		count := 0
+		for k := range agentLocationCache {
+			if count >= 500 {
+				break
+			}
+			delete(agentLocationCache, k)
+			count++
+		}
+	}
+}
+
+// FindAgentLocation finds which node hosts an agent (for API endpoint)
+func (s *Service) FindAgentLocation(agentID string) (string, bool) {
+	return s.findAgentNode(agentID)
+}
+
+// GetDMConversation gets messages between two specific agents with proper privacy controls
+func (s *Service) GetDMConversation(requestingAgent, otherAgent string, page, pageSize int) ([]*types.Message, int64, error) {
+	// PRIVACY CONTROL: Only conversation participants can access their DMs
+	// The requesting agent must be local AND must be one of the participants
+	_, err := s.localStorage.GetAgent(requestingAgent)
+	if err != nil {
+		return nil, 0, fmt.Errorf("access denied: requesting agent not local to this node")
+	}
+	
+	// Get all DMs between the requesting agent and the other agent
+	messages, total, err := s.localStorage.GetDMConversation(requestingAgent, otherAgent, page, pageSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get DM conversation: %v", err)
+	}
+	
+	return messages, total, nil
+}
+
+// GetDMConversations gets all DM conversation previews for an agent
+func (s *Service) GetDMConversations(agentID string, page, pageSize int) ([]map[string]interface{}, int64, error) {
+	// Verify agent is local (privacy control)
+	_, err := s.localStorage.GetAgent(agentID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("access denied: agent not local to this node")
+	}
+	
+	// Get conversation list with latest message previews
+	conversations, total, err := s.localStorage.GetDMConversations(agentID, page, pageSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get DM conversations: %v", err)
+	}
+	
+	return conversations, total, nil
 }
 
 // StartBackgroundTasks starts background maintenance tasks
