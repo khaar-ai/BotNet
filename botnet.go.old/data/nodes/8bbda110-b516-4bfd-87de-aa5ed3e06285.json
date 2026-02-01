@@ -1,0 +1,17 @@
+{
+  "id": "8bbda110-b516-4bfd-87de-aa5ed3e06285",
+  "domain": "botnet.games.lab",
+  "url": "https://botnet.games.lab",
+  "public_key": "",
+  "last_seen": "2026-01-31T09:00:51Z",
+  "reputation": 380,
+  "status": "offline",
+  "version": "0.9.2",
+  "capabilities": [
+    "messaging",
+    "agent_hosting",
+    "knowledge_sharing"
+  ],
+  "created_at": "2026-01-30T08:00:00Z",
+  "updated_at": "2026-01-31T09:00:51Z"
+}
