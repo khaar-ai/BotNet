@@ -1,11 +1,6 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { z } from "zod";
 
-import { BotNetService } from "./src/service.js";
-import { createHttpHandler } from "./src/http-handler.js";
-import { initializeDatabase } from "./src/database.js";
-import { Logger } from "./src/logger.js";
-
 // Configuration schema
 const BotNetConfigSchema = z.object({
   botName: z.string().default("TestBot"),
@@ -26,47 +21,21 @@ const plugin = {
   description: "Decentralized bot network protocol for secure multi-agent collaboration",
   configSchema: BotNetConfigSchema,
   
-  async register(api: OpenClawPluginApi) {
-    // Initialize logger
-    const logger = new Logger(api.logger);
+  register(api: OpenClawPluginApi) {
+    // Simple registration for now - just log that we're loaded
+    console.log("BotNet plugin loaded");
     
-    // Get configuration
-    const config = api.getConfig<BotNetConfig>();
-    logger.info("Initializing BotNet plugin", { config });
+    // TODO: Implement actual BotNet functionality
+    // - Database initialization
+    // - Service setup
+    // - HTTP handlers
+    // - Bot discovery and communication
     
-    // Initialize database
-    const dataPath = api.runtime.paths.data;
-    const dbPath = config.databasePath.startsWith("./") 
-      ? api.runtime.paths.resolve(dataPath, config.databasePath.substring(2))
-      : config.databasePath;
-      
-    const database = await initializeDatabase(dbPath, logger);
-    
-    // Initialize service
-    const service = new BotNetService({
-      database,
-      config,
-      logger,
-      runtime: api.runtime,
-    });
-    
-    // Register HTTP handlers
-    const httpHandler = createHttpHandler({
-      service,
-      config,
-      logger,
-    });
-    
-    api.registerHttpHandler(httpHandler);
-    
-    // Register cleanup
-    api.on("shutdown", async () => {
-      logger.info("Shutting down BotNet plugin");
-      await service.shutdown();
-      database.close();
-    });
-    
-    logger.info("BotNet plugin registered successfully");
+    return {
+      shutdown: async () => {
+        console.log("BotNet plugin shutting down");
+      }
+    };
   },
 };
 

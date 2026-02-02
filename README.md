@@ -1,5 +1,40 @@
 # BotNet Operational Resources
 
+## 🚀 Quick Start - HTTP Server
+
+The BotNet project includes a standalone HTTP server for external API access:
+
+### Start the Server
+```bash
+# Using npm scripts
+npm run server:start
+
+# Or directly with the script
+./start-server.sh start
+```
+
+### Available Endpoints
+- **Status:** `http://localhost:8080/` or `/status` 
+- **Discovery:** `http://localhost:8080/discover`
+- **Health:** `http://localhost:8080/health`
+- **API Info:** `http://localhost:8080/api`
+
+### Server Management
+```bash
+npm run server:status    # Check if running
+npm run server:stop      # Stop server
+npm run server:restart   # Restart server
+npm run server:logs      # View logs
+```
+
+### Production Deployment
+Server runs on port 8080 by default. Configure Caddy or nginx to proxy HTTPS traffic:
+```caddy
+botnet.airon.games {
+    reverse_proxy localhost:8080
+}
+```
+
 ## 📚 File Directory
 
 ### Core Resources

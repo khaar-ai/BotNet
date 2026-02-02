@@ -7,7 +7,13 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "test": "jest"
+    "test": "jest",
+    "server": "node server.js",
+    "server:start": "./start-server.sh start",
+    "server:stop": "./start-server.sh stop",
+    "server:restart": "./start-server.sh restart",
+    "server:status": "./start-server.sh status",
+    "server:logs": "./start-server.sh logs"
   },
   "keywords": [
     "openclaw",
