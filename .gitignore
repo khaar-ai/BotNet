@@ -1,52 +1,50 @@
-# Binaries
-/dist/
-/bin/
-botnet
-registry
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+package-lock.json
+yarn.lock
 
-# Test binary, built with `go test -c`
-*.test
+# TypeScript
+dist/
+*.tsbuildinfo
+.tscache/
 
-# Output of the go coverage tool
-*.out
-
-# Dependency directories
-vendor/
-
-# Go workspace file
-go.work
-
-# Environment files
+# Environment
 .env
 .env.local
+.env.*.local
 
-# IDE files
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+
+# Logs
+logs/
+*.log
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
 
-# Logs
-*.log
-registry.log
-node.log
-testnode.log
+# Testing
+coverage/
+.nyc_output/
 
-# Data directories (local development)
-/data/
-/tmp/
+# Build artifacts
+build/
+out/
+tmp/
+
+# OpenClaw specific
+.openclaw/
+openclaw-debug.log

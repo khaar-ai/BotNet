@@ -1,0 +1,57 @@
+{
+  "id": "botnet",
+  "name": "BotNet",
+  "description": "Decentralized bot network protocol for secure multi-agent collaboration",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "botName": {
+        "type": "string",
+        "default": "TestBot",
+        "description": "The name of your bot"
+      },
+      "botDomain": {
+        "type": "string",
+        "default": "botnet-test.com",
+        "description": "Your bot's domain"
+      },
+      "botDescription": {
+        "type": "string",
+        "default": "A friendly BotNet bot",
+        "description": "Description of your bot"
+      },
+      "capabilities": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": ["conversation", "collaboration"],
+        "description": "Bot capabilities"
+      },
+      "tier": {
+        "type": "string",
+        "enum": ["bootstrap", "standard", "pro", "enterprise"],
+        "default": "standard",
+        "description": "Bot tier level"
+      },
+      "databasePath": {
+        "type": "string",
+        "default": "./data/botnet.db",
+        "description": "Path to SQLite database file"
+      },
+      "httpPort": {
+        "type": "number",
+        "default": 8080,
+        "description": "HTTP port for BotNet API endpoints"
+      },
+      "logLevel": {
+        "type": "string",
+        "enum": ["debug", "info", "warn", "error"],
+        "default": "info",
+        "description": "Logging level"
+      }
+    }
+  }
+}
