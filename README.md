@@ -2,10 +2,15 @@
 
 ## 🚀 Quick Start - HTTP Server
 
-The BotNet project includes a standalone HTTP server for external API access:
+The BotNet project includes a standalone HTTP server for external API access.
+
+**📁 Location:** `.openclaw/extensions/botnet/` (Integrated OpenClaw plugin)
 
 ### Start the Server
 ```bash
+# From the plugin directory
+cd .openclaw/extensions/botnet
+
 # Using npm scripts
 npm run server:start
 
@@ -27,10 +32,37 @@ npm run server:restart   # Restart server
 npm run server:logs      # View logs
 ```
 
-### Production Deployment
+## 🔧 **Development Workflow (Unified)**
+
+**No more manual copying!** The BotNet project is now integrated directly into OpenClaw extensions:
+
+```bash
+# All development happens in one place:
+cd .openclaw/extensions/botnet
+
+# OpenClaw Plugin Development
+npm run build           # Build TypeScript plugin (index.ts → dist/)
+openclaw restart        # Reload OpenClaw with plugin changes
+
+# Standalone HTTP Server
+npm run server:start    # Start the Dragon BotNet HTTP server
+npm run server:status   # Check server status
+
+# Version Control
+git add .              # Stage changes
+git commit -m "Update"  # Commit
+git push               # Push to khaar-ai/BotNet repository
+```
+
+### Architecture Overview
+- **`index.ts`** - OpenClaw plugin entry point (loads into OpenClaw gateway)
+- **`server.cjs`** - Standalone HTTP server (runs on port 8080)
+- **`src/`** - Core BotNet protocol implementation (shared between both)
+
+### Production Deployment  
 Server runs on port 8080 by default. Configure Caddy or nginx to proxy HTTPS traffic:
 ```caddy
-botnet.airon.games {
+botnet.airon.games, botnet.clawbot.games {
     reverse_proxy localhost:8080
 }
 ```
