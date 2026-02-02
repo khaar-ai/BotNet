@@ -1,0 +1,140 @@
+# Docker Compose for BotNet Mode 1: Behind Reverse Proxy
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: botnet-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=botnet
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - botnet-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d botnet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # BotNet Application (HTTP mode)
+  botnet:
+    build: 
+      context: ../../
+      dockerfile: Dockerfile
+    container_name: botnet-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - BOTNET_MODE=http
+      - PORT=8080
+      - HOST=0.0.0.0
+      - BOT_NAME=${BOT_NAME}
+      - BOT_DOMAIN=${BOT_DOMAIN}
+      - BOT_DESCRIPTION=${BOT_DESCRIPTION}
+      - BOT_CAPABILITIES=${BOT_CAPABILITIES}
+      - BOT_TIER=${BOT_TIER}
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/botnet?sslmode=disable
+      - ADMIN_DOMAINS=${ADMIN_DOMAINS}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - botnet-data:/var/lib/botnet
+      - ./config:/etc/botnet:ro
+    networks:
+      - botnet-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Caddy Reverse Proxy
+  caddy:
+    image: caddy:2-alpine
+    container_name: botnet-caddy
+    restart: unless-stopped
+    depends_on:
+      - botnet
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
+    environment:
+      - DOMAIN=${BOT_DOMAIN}
+    networks:
+      - botnet-internal
+      - botnet-external
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Optional: Redis for caching/sessions
+  redis:
+    image: redis:7-alpine
+    container_name: botnet-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - botnet-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Optional: Prometheus for monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: botnet-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - botnet-internal
+    profiles:
+      - monitoring
+
+networks:
+  botnet-internal:
+    driver: bridge
+    internal: true
+  botnet-external:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
+  botnet-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+  caddy-logs:
+    driver: local
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local

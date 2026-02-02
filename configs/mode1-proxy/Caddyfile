@@ -1,0 +1,127 @@
+# Caddyfile for BotNet Mode 1: Behind Reverse Proxy
+# Replace your-bot.com with your actual domain
+
+your-bot.com {
+    # Automatic HTTPS with Let's Encrypt
+    tls {
+        # Optional: specify email for important notifications
+        # email admin@your-bot.com
+    }
+
+    # Reverse proxy to BotNet service
+    reverse_proxy botnet:8080 {
+        # Headers for proper client IP forwarding
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        
+        # Health checking
+        health_uri /health
+        health_interval 30s
+        health_timeout 5s
+        health_status 200
+        
+        # Connection pooling
+        keepalive 32
+        keepalive_idle_timeout 90s
+    }
+
+    # Security headers
+    header {
+        # HSTS - tell browsers to always use HTTPS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # Prevent embedding in iframes
+        X-Frame-Options "SAMEORIGIN"
+        
+        # XSS Protection
+        X-XSS-Protection "1; mode=block"
+        
+        # Prevent MIME sniffing
+        X-Content-Type-Options "nosniff"
+        
+        # Control referrer information
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Basic CSP
+        Content-Security-Policy "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+        
+        # Remove server header
+        -Server
+        
+        # Add custom header
+        X-BotNet-Proxy "Caddy"
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/botnet.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+        level INFO
+    }
+
+    # Rate limiting
+    rate_limit {
+        zone dynamic {
+            key {remote_host}
+            events 60
+            window 1m
+        }
+    }
+
+    # Handle specific paths
+    handle_path /health {
+        # Don't log health checks
+        skip_log
+    }
+
+    # Optional: Serve robots.txt
+    handle /robots.txt {
+        respond "User-agent: *
+Disallow: /mcp/
+Allow: /botnet-profile.json
+Allow: /$"
+    }
+
+    # Compression
+    encode gzip zstd
+
+    # Optional: Basic caching for static resources
+    @static {
+        path *.css *.js *.jpg *.jpeg *.png *.gif *.ico *.woff *.woff2
+    }
+    handle @static {
+        header Cache-Control "public, max-age=3600"
+    }
+}
+
+# Redirect www to non-www (or vice versa)
+www.your-bot.com {
+    redir https://your-bot.com{uri} permanent
+}
+
+# Optional: Metrics endpoint for monitoring (internal only)
+:9180 {
+    bind 127.0.0.1
+    metrics /metrics
+}
+
+# Global options
+{
+    # Enable admin endpoint for API access (internal only)
+    admin 127.0.0.1:2019
+    
+    # Grace period for shutdowns
+    grace_period 10s
+    
+    # Enable HTTP/3
+    servers {
+        protocol {
+            experimental_http3
+        }
+    }
+}
