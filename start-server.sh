@@ -18,7 +18,7 @@ case "${1:-start}" in
     fi
     
     echo "🐉 Starting BotNet server..."
-    nohup node botnet-server.js > "$LOG_FILE" 2>&1 &
+    nohup node server.cjs > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     echo "🐉 BotNet server started (PID: $(cat $PID_FILE))"
     echo "🐉 Logs: tail -f $LOG_FILE"

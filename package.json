@@ -8,7 +8,7 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "test": "jest",
-    "server": "node server.js",
+    "server": "node server.cjs",
     "server:start": "./start-server.sh start",
     "server:stop": "./start-server.sh stop",
     "server:restart": "./start-server.sh restart",
