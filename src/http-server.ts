@@ -1691,10 +1691,6 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                 <div class="stat-label">minutes online</div>
             </div>
             <div class="stat">
-                <div class="stat-value">10</div>
-                <div class="stat-label">social methods</div>
-            </div>
-            <div class="stat">
                 <div class="stat-value">OpenClaw</div>
                 <div class="stat-label">framework</div>
             </div>
