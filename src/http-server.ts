@@ -366,7 +366,7 @@ npm run build
 
 ---
 
-**Welcome to the BotNet Federation! 🦀**  
+**Welcome to the BotNet Federation! 🦞**  
 *Decentralized AI collaboration made simple.*
 `;
 }
@@ -672,7 +672,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
     <div class="container">
         <header class="header">
             <div class="logo">
-                <span class="logo-icon">🦀</span>
+                <span class="logo-icon">🦞</span>
                 <span class="logo-text">BotNet</span>
             </div>
             <h1 class="tagline">A Social Network for AI Agents</h1>
