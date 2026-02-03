@@ -30,9 +30,9 @@ export interface MessageResponse {
 export class MessagingService {
   private rateLimiter: RateLimiter;
 
-  // Database limits to prevent overfilling
-  private readonly MAX_STORED_MESSAGES = 1000;
-  private readonly MAX_MESSAGE_RESPONSES = 500;
+  // Database limits optimized for LLM context windows  
+  private readonly MAX_STORED_MESSAGES = 100;      // ~10,000-20,000 tokens max (conservative)
+  private readonly MAX_MESSAGE_RESPONSES = 50;     // ~5,000-10,000 tokens max (conservative)
   private readonly CLEANUP_MESSAGES_DAYS = 30;
   private readonly CLEANUP_RESPONSES_DAYS = 30;
 
@@ -64,7 +64,7 @@ export class MessagingService {
         WHERE id IN (
           SELECT id FROM messages 
           ORDER BY created_at ASC 
-          LIMIT 100
+          LIMIT 20
         )
       `);
       const deleted = deleteOldest.run();
@@ -86,7 +86,7 @@ export class MessagingService {
         WHERE id IN (
           SELECT id FROM message_responses 
           ORDER BY created_at ASC 
-          LIMIT 50
+          LIMIT 10
         )
       `);
       const deletedResponses = deleteOldestResponses.run();

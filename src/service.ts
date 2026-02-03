@@ -438,10 +438,13 @@ export class BotNetService {
   }
 
   /**
-   * Review gossips and get combined gossip text
+   * Review gossips and get combined gossip text (LLM-optimized default limit)
    */
-  async reviewGossips(limit: number = 20, category?: string, clientIP?: string): Promise<any> {
-    return await this.gossipService.reviewGossips(limit, category, clientIP);
+  async reviewGossips(limit: number = 10, category?: string, clientIP?: string): Promise<any> {
+    // Cap limit to prevent LLM context overflow
+    const maxLimit = 15;
+    const safeLimited = Math.min(limit, maxLimit);
+    return await this.gossipService.reviewGossips(safeLimited, category, clientIP);
   }
 
   /**

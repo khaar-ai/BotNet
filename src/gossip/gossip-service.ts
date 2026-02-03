@@ -21,18 +21,32 @@ export interface GossipMessage {
 export class GossipService {
   private rateLimiter: RateLimiter;
 
-  // Database limits to prevent overfilling
-  private readonly MAX_GOSSIP_MESSAGES = 500;
-  private readonly MAX_ANONYMOUS_GOSSIP = 200;
-  private readonly CLEANUP_GOSSIP_DAYS = 7;
-  private readonly CLEANUP_ANONYMOUS_DAYS = 7;
+  // LLM-optimized limits to prevent context overflow
+  private readonly MAX_GOSSIP_MESSAGES = 20;       // ~2,000-4,000 tokens max (conservative)
+  private readonly MAX_ANONYMOUS_GOSSIP = 10;      // ~1,000-2,000 tokens max (conservative)  
+  private readonly CLEANUP_GOSSIP_DAYS = 1;        // Keep only recent/relevant gossips
+  private readonly CLEANUP_ANONYMOUS_DAYS = 1;     // 1 day retention for anonymous
+  private readonly MAX_GOSSIP_LENGTH = 300;        // Shorter messages for better context fit
 
   constructor(
     private db: Database.Database,
     private config: BotNetConfig,
     private logger: Logger
   ) {
-    this.rateLimiter = new RateLimiter(logger, 60 * 1000, 10); // 10 gossips per minute
+    this.rateLimiter = new RateLimiter(logger, 60 * 1000, 5); // 5 gossips per minute (LLM-friendly)
+  }
+
+  /**
+   * Validate gossip content length for LLM context efficiency
+   */
+  private validateGossipContent(content: string): void {
+    if (!content || content.trim().length === 0) {
+      throw new Error('Gossip content cannot be empty');
+    }
+    
+    if (content.length > this.MAX_GOSSIP_LENGTH) {
+      throw new Error(`Gossip content too long (${content.length} chars). Maximum allowed: ${this.MAX_GOSSIP_LENGTH} characters for LLM context efficiency.`);
+    }
   }
 
   /**
@@ -51,7 +65,7 @@ export class GossipService {
         WHERE id IN (
           SELECT id FROM gossip_messages 
           ORDER BY created_at ASC 
-          LIMIT 50
+          LIMIT 10
         )
       `);
       const deleted = deleteOldest.run();
@@ -73,7 +87,7 @@ export class GossipService {
         WHERE id IN (
           SELECT id FROM anonymous_gossip 
           ORDER BY created_at ASC 
-          LIMIT 25
+          LIMIT 5
         )
       `);
       const deletedAnon = deleteOldestAnon.run();
@@ -270,6 +284,16 @@ export class GossipService {
       };
     }
 
+    // Validate content length for LLM context efficiency
+    try {
+      this.validateGossipContent(content);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Content validation failed'
+      };
+    }
+
     // Cleanup old data and check limits before creating new anonymous gossip
     this.cleanupOldData();
     this.checkGossipLimits();
@@ -349,6 +373,9 @@ export class GossipService {
   }
   
   async createMessage(content: string, category?: string): Promise<string> {
+    // Validate content length for LLM context efficiency
+    this.validateGossipContent(content);
+    
     // Cleanup old data and check limits before creating new gossip message
     this.cleanupOldData();
     this.checkGossipLimits();
@@ -454,6 +481,9 @@ export class GossipService {
    * Share gossip with known friends
    */
   async shareGossip(content: string, category: string = 'general', tags: string[] = [], clientIP?: string): Promise<{ messageId: string; sharedWithFriends: number; message: string }> {
+    // Validate content length for LLM context efficiency
+    this.validateGossipContent(content);
+    
     // Rate limiting
     const rateLimitKey = clientIP || this.config.botDomain;
     if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'shareGossip')) {
@@ -607,6 +637,9 @@ export class GossipService {
     this.logger.info('📡 Receiving gossip from federation', { fromDomain, category, contentLength: content.length });
     
     try {
+      // Validate incoming gossip content length
+      this.validateGossipContent(content);
+      
       this.checkGossipLimits();
       
       const gossipId = uuidv4();
