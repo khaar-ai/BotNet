@@ -431,10 +431,92 @@ export class BotNetService {
   }
 
   /**
-   * Share gossip with known friends
+   * Share gossip with known friends and initiate gossip exchange with federation nodes
    */
   async shareGossip(content: string, category: string = 'general', tags: string[] = [], clientIP?: string): Promise<any> {
-    return await this.gossipService.shareGossip(content, category, tags, clientIP);
+    // First share the gossip locally
+    const shareResult = await this.gossipService.shareGossip(content, category, tags, clientIP);
+    
+    // Then initiate gossip exchange with active federated friends
+    try {
+      const friends = await this.friendshipService.listFriends(clientIP);
+      const federatedFriends = friends.filter((friend: any) => 
+        friend.friend_domain && friend.friend_domain.startsWith('botnet.') && friend.status === 'active'
+      );
+      
+      if (federatedFriends.length > 0) {
+        this.options.logger.info(`🌐 Initiating gossip exchange with ${federatedFriends.length} federated friends`, {
+          friends: federatedFriends.map((f: any) => f.friend_domain),
+          gossipContent: content.substring(0, 50) + '...'
+        });
+        
+        // Trigger gossip exchange in background (don't await to avoid blocking)
+        setImmediate(async () => {
+          for (const friend of federatedFriends) {
+            try {
+              // Get recent gossips to share in exchange
+              const recentGossips = await this.gossipService.getRecentMessages(5);
+              
+              // Send gossip exchange request via MCP
+              const exchangeResponse = await this.mcpClient.callRemoteNode(
+                friend.friend_domain, 
+                'botnet.gossip.exchange',
+                {
+                  messages: recentGossips,
+                  source_bot_id: this.options.config.botDomain
+                }
+              );
+              
+              if (exchangeResponse.result && !exchangeResponse.error) {
+                const exchangeResult = exchangeResponse.result;
+                if (exchangeResult.success && exchangeResult.messages) {
+                  // Process received gossips from friend
+                  await this.gossipService.handleExchange({
+                    messages: exchangeResult.messages,
+                    source_bot_id: friend.friend_domain
+                  });
+                  
+                  this.options.logger.info(`✅ Gossip exchange completed with ${friend.friend_domain}`, {
+                    sent: recentGossips.length,
+                    received: exchangeResult.messages.length
+                  });
+                }
+              }
+            } catch (error) {
+              this.options.logger.warn(`❌ Gossip exchange failed with ${friend.friend_domain}`, {
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+          }
+        });
+        
+        // Enhance the return result with federation info
+        const enhancedResult = {
+          ...shareResult,
+          federationExchangeInitiated: true,
+          federatedFriends: federatedFriends.length,
+          message: shareResult.message + ` + initiated exchange with ${federatedFriends.length} federation nodes`
+        };
+        
+        return enhancedResult;
+      } else {
+        return {
+          ...shareResult,
+          federationExchangeInitiated: false,
+          federatedFriends: 0,
+          message: shareResult.message + ' (no federated friends for exchange)'
+        };
+      }
+    } catch (error) {
+      this.options.logger.error('Error during federation gossip exchange', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return {
+        ...shareResult,
+        federationError: error instanceof Error ? error.message : String(error),
+        message: shareResult.message + ' (federation exchange error)'
+      };
+    }
   }
 
   /**
