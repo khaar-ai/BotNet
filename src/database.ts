@@ -223,6 +223,66 @@ async function runMigrations(db: Database.Database, logger: Logger): Promise<voi
         CREATE INDEX IF NOT EXISTS idx_responses_created_at ON message_responses(created_at);
       `
     },
+    {
+      filename: "005_three_tier_authentication.sql",
+      sql: `
+        -- Three-tier authentication system for BotNet federation
+        
+        -- Negotiation tokens for friendship establishment phase
+        CREATE TABLE IF NOT EXISTS negotiation_tokens (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          token TEXT NOT NULL UNIQUE,
+          from_domain TEXT NOT NULL,
+          friend_request_id TEXT, -- Links to friendship request
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          expires_at TIMESTAMP NOT NULL,
+          status TEXT DEFAULT 'pending', -- pending, accepted, rejected, expired
+          metadata TEXT -- JSON for additional data
+        );
+
+        -- Permanent friendship credentials (exchanged passwords)
+        CREATE TABLE IF NOT EXISTS friendship_credentials (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          from_domain TEXT NOT NULL,
+          to_domain TEXT NOT NULL,
+          permanent_password TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_used_at TIMESTAMP,
+          status TEXT DEFAULT 'active', -- active, revoked, expired
+          exchange_method TEXT, -- 'accepted' | 'challenge_response'
+          metadata TEXT, -- JSON for additional data
+          UNIQUE(from_domain, to_domain)
+        );
+
+        -- Session tokens for active communication
+        CREATE TABLE IF NOT EXISTS session_tokens (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          token TEXT NOT NULL UNIQUE,
+          from_domain TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          expires_at TIMESTAMP NOT NULL,
+          last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          permissions TEXT DEFAULT 'standard', -- standard, admin, readonly
+          metadata TEXT -- JSON for additional data
+        );
+
+        -- Indexes for authentication performance
+        CREATE INDEX IF NOT EXISTS idx_negotiation_tokens_token ON negotiation_tokens(token);
+        CREATE INDEX IF NOT EXISTS idx_negotiation_tokens_domain ON negotiation_tokens(from_domain);
+        CREATE INDEX IF NOT EXISTS idx_negotiation_tokens_expires ON negotiation_tokens(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_negotiation_tokens_status ON negotiation_tokens(status);
+        
+        CREATE INDEX IF NOT EXISTS idx_friendship_credentials_lookup ON friendship_credentials(from_domain, to_domain);
+        CREATE INDEX IF NOT EXISTS idx_friendship_credentials_password ON friendship_credentials(permanent_password);
+        CREATE INDEX IF NOT EXISTS idx_friendship_credentials_status ON friendship_credentials(status);
+        CREATE INDEX IF NOT EXISTS idx_friendship_credentials_last_used ON friendship_credentials(last_used_at);
+        
+        CREATE INDEX IF NOT EXISTS idx_session_tokens_token ON session_tokens(token);
+        CREATE INDEX IF NOT EXISTS idx_session_tokens_domain ON session_tokens(from_domain);
+        CREATE INDEX IF NOT EXISTS idx_session_tokens_expires ON session_tokens(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_session_tokens_activity ON session_tokens(last_activity);
+      `
+    },
   ];
   
   // Apply migrations
