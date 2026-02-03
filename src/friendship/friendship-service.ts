@@ -356,6 +356,63 @@ export class FriendshipService {
   }
 
   /**
+   * Add friend by request ID - handles both local acceptance and automatic federated challenges
+   */
+  async addFriendByRequestId(requestId: string): Promise<{ status: string; friendshipId?: string; challengeId?: string; message?: string }> {
+    // Get the friendship request
+    const friendship = this.database.prepare(`
+      SELECT * FROM friendships WHERE id = ?
+    `).get(requestId);
+    
+    if (!friendship) {
+      throw new Error('Friendship request not found');
+    }
+    
+    if (friendship.status !== 'pending') {
+      throw new Error(`Cannot add friend - request status is ${friendship.status}`);
+    }
+    
+    const metadata = JSON.parse(friendship.metadata || '{}');
+    const requestType = metadata.requestType || this.determineRequestType(friendship.friend_domain);
+    
+    if (requestType === 'local') {
+      // Local bot - immediately accept
+      const updatedMetadata = {
+        ...metadata,
+        acceptedAt: new Date().toISOString(),
+        acceptedBy: this.config.botDomain
+      };
+      
+      this.database.prepare(`
+        UPDATE friendships 
+        SET status = 'active', metadata = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(JSON.stringify(updatedMetadata), requestId);
+      
+      this.logger.info('✅ Local friend request accepted', {
+        fromDomain: friendship.friend_domain,
+        requestId,
+        type: 'local'
+      });
+      
+      return {
+        status: 'accepted',
+        friendshipId: requestId,
+        message: 'Local friend request accepted immediately'
+      };
+    } else {
+      // Federated domain - initiate challenge automatically
+      const challengeResult = await this.initiateDomainChallenge(requestId);
+      
+      return {
+        status: 'challenge_sent',
+        challengeId: challengeResult.challengeId,
+        message: 'Federated domain challenge initiated - awaiting verification'
+      };
+    }
+  }
+
+  /**
    * Verify domain challenge response
    */
   async verifyDomainChallenge(challengeId: string, response: string): Promise<{ verified: boolean; friendshipId?: string }> {

@@ -193,7 +193,7 @@ export class BotNetService {
   }
   
   /**
-   * Accept friend request from another domain
+   * Accept friend request from another domain (legacy method)
    */
   async acceptFriendRequest(friendHost: string, domainName: string): Promise<{ friendshipId: string }> {
     try {
@@ -209,6 +209,18 @@ export class BotNetService {
       return result;
     } catch (error) {
       this.options.logger.error("🦞 Failed to accept friend request", { friendHost, domainName, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Add friend by request ID - handles local acceptance and automatic federated challenges
+   */
+  async addFriend(requestId: string): Promise<{ status: string; friendshipId?: string; challengeId?: string; message?: string }> {
+    try {
+      return await this.friendshipService.addFriendByRequestId(requestId);
+    } catch (error) {
+      this.options.logger.error("🦞 Failed to add friend", { requestId, error });
       throw error;
     }
   }
@@ -228,14 +240,7 @@ export class BotNetService {
   }
 
   /**
-   * Initiate domain challenge for federated request
-   */
-  async challengeDomain(requestId: string): Promise<any> {
-    return await this.friendshipService.initiateDomainChallenge(requestId);
-  }
-
-  /**
-   * Verify domain challenge response
+   * Verify domain challenge response (for external domains responding to our challenges)
    */
   async verifyChallenge(challengeId: string, response: string): Promise<any> {
     return await this.friendshipService.verifyDomainChallenge(challengeId, response);

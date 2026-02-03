@@ -272,21 +272,21 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                 }
               }
               
-              // Accept friend request (add friend)
+              // Accept friend request (add friend) - handles both local and federated with auto-challenge
               if (request.method === 'botnet.addFriend') {
                 try {
-                  const { friendHost } = request.params || {};
-                  if (!friendHost) {
-                    throw new Error('friendHost parameter required');
+                  const { requestId } = request.params || {};
+                  if (!requestId) {
+                    throw new Error('requestId parameter required');
                   }
                   
-                  const result = await botnetService.acceptFriendRequest(friendHost, config.botName);
+                  const result = await botnetService.addFriend(requestId);
                   
                   const response = {
                     jsonrpc: '2.0',
                     result: {
-                      status: 'accepted',
-                      friendHost,
+                      status: result.status, // 'accepted' for local, 'challenge_sent' for federated
+                      requestId,
                       friendshipId: result.friendshipId,
                       timestamp: new Date().toISOString()
                     },
@@ -349,46 +349,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                 }
               }
 
-              // Challenge domain for federated friend request
-              if (request.method === 'botnet.challengeDomain') {
-                try {
-                  const { requestId } = request.params || {};
-                  if (!requestId) {
-                    throw new Error('requestId parameter required');
-                  }
-                  
-                  const result = await botnetService.challengeDomain(requestId);
-                  
-                  const response = {
-                    jsonrpc: '2.0',
-                    result: {
-                      status: 'challenge_initiated',
-                      challengeId: result.challengeId,
-                      message: 'Domain challenge sent - awaiting verification'
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(response, null, 2));
-                  return;
-                } catch (error) {
-                  const errorResponse = {
-                    jsonrpc: '2.0',
-                    error: {
-                      code: -32603,
-                      message: error instanceof Error ? error.message : 'Failed to initiate domain challenge'
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(400, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(errorResponse, null, 2));
-                  return;
-                }
-              }
-
-              // Verify domain challenge response
+              // Verify domain challenge response (for external domains responding to our challenges)
               if (request.method === 'botnet.verifyChallenge') {
                 try {
                   const { challengeId, response: challengeResponse } = request.params || {};
