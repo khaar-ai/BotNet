@@ -24,13 +24,8 @@ export const methodAuthLevels: Record<string, AuthLevel> = {
 
   // ===== TIER 3: Active friendship methods (require session token) =====
   'botnet.message.send': AuthLevel.SESSION,
-  'botnet.message.list': AuthLevel.SESSION,
-  'botnet.message.checkResponses': AuthLevel.SESSION,
-  'botnet.gossip.share': AuthLevel.SESSION,
-  'botnet.gossip.list': AuthLevel.SESSION,
+  'botnet.message.check': AuthLevel.SESSION,
   'botnet.gossip.exchange': AuthLevel.SESSION,
-  'botnet.friendship.list': AuthLevel.SESSION,
-  'botnet.friendship.remove': AuthLevel.SESSION,
 
   // ===== SPECIAL: Password-based authentication =====
   'botnet.login': AuthLevel.SPECIAL
