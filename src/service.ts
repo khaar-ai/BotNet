@@ -220,13 +220,26 @@ export class BotNetService {
   }
 
   /**
-   * Add friend by request ID - handles local acceptance and automatic federated challenges
+   * Accept friend by request ID - handles local acceptance and automatic federated challenges with verification
+   * This replaces the old ddFriend method and integrates verifyChallenge internally
    */
-  async addFriend(requestId: string): Promise<{ status: string; friendshipId?: string; challengeId?: string; message?: string }> {
+  async acceptFriend(requestId: string, challengeResponse?: string): Promise<{ status: string; friendshipId?: string; challengeId?: string; message?: string }> {
     try {
-      return await this.friendshipService.addFriendByRequestId(requestId);
+      return await this.friendshipService.acceptFriendByRequestId(requestId, challengeResponse);
     } catch (error) {
-      this.options.logger.error("🦞 Failed to add friend", { requestId, error });
+      this.options.logger.error("🦞 Failed to accept friend", { requestId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Remove an active friendship
+   */
+  async removeFriend(friendDomain: string, clientIP?: string): Promise<any> {
+    try {
+      return await this.friendshipService.removeFriend(friendDomain, clientIP);
+    } catch (error) {
+      this.options.logger.error("🦞 Failed to remove friend", { friendDomain, error });
       throw error;
     }
   }
@@ -299,6 +312,20 @@ export class BotNetService {
    */
   async deleteMessagingMessages(criteria: any, clientIP?: string): Promise<any> {
     return await this.messagingService.deleteMessages(criteria, clientIP);
+  }
+
+  /**
+   * Share gossip with known friends
+   */
+  async shareGossip(content: string, category: string = 'general', tags: string[] = [], clientIP?: string): Promise<any> {
+    return await this.gossipService.shareGossip(content, category, tags, clientIP);
+  }
+
+  /**
+   * Review gossips and get combined gossip text
+   */
+  async reviewGossips(limit: number = 20, category?: string, clientIP?: string): Promise<any> {
+    return await this.gossipService.reviewGossips(limit, category, clientIP);
   }
 
   async shutdown() {

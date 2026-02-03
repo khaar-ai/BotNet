@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import type Database from "better-sqlite3";
 import type { BotNetConfig } from "../../index.js";
 import type { Logger } from "../logger.js";
+import { RateLimiter } from "../rate-limiter.js";
 
 export interface GossipMessage {
   id: number;
@@ -18,11 +19,15 @@ export interface GossipMessage {
 }
 
 export class GossipService {
+  private rateLimiter: RateLimiter;
+
   constructor(
     private db: Database.Database,
     private config: BotNetConfig,
     private logger: Logger
-  ) {}
+  ) {
+    this.rateLimiter = new RateLimiter(logger, 60 * 1000, 10); // 10 gossips per minute
+  }
   
   async handleExchange(request: any): Promise<any> {
     const { messages, source_bot_id } = request;
@@ -335,6 +340,133 @@ export class GossipService {
       deletedCount: mainResult.changes || 0,
       deletedAnonymous: anonymousDeleted,
       message: `Deleted ${totalDeleted} message(s) (${mainResult.changes} regular, ${anonymousDeleted} anonymous)`
+    };
+  }
+
+  /**
+   * Share gossip with known friends
+   */
+  async shareGossip(content: string, category: string = 'general', tags: string[] = [], clientIP?: string): Promise<{ messageId: string; sharedWithFriends: number; message: string }> {
+    // Rate limiting
+    const rateLimitKey = clientIP || this.config.botDomain;
+    if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'shareGossip')) {
+      throw new Error('Rate limit exceeded for sharing gossip. Please try again later.');
+    }
+
+    // Create gossip message
+    const messageId = await this.createMessage(content, category);
+
+    // Get active friends to share with
+    const friendsStmt = this.db.prepare(`
+      SELECT friend_domain FROM friendships 
+      WHERE status = 'active'
+    `);
+    const friends = friendsStmt.all() as { friend_domain: string }[];
+
+    // Store gossip sharing record
+    const shareStmt = this.db.prepare(`
+      INSERT INTO gossip_messages (
+        message_id, source_bot_id, content, category, confidence_score, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const botId = `${this.config.botName}@${this.config.botDomain}`;
+    const metadata = JSON.stringify({
+      tags,
+      sharedWith: friends.map(f => f.friend_domain),
+      shareType: 'friends_only',
+      sharedAt: new Date().toISOString()
+    });
+
+    shareStmt.run(messageId, botId, content, category, 85, metadata);
+
+    this.logger.info('📢 Gossip shared with friends', {
+      messageId,
+      category,
+      tags,
+      friendCount: friends.length,
+      contentLength: content.length
+    });
+
+    return {
+      messageId,
+      sharedWithFriends: friends.length,
+      message: `Gossip shared with ${friends.length} friend(s)`
+    };
+  }
+
+  /**
+   * Review gossips and get combined gossip text
+   */
+  async reviewGossips(limit: number = 20, category?: string, clientIP?: string): Promise<{ 
+    gossips: any[]; 
+    combinedText: string; 
+    summary: { total: number; categories: string[]; sources: string[] } 
+  }> {
+    // Rate limiting
+    const rateLimitKey = clientIP || this.config.botDomain;
+    if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'reviewGossips')) {
+      throw new Error('Rate limit exceeded for reviewing gossips. Please try again later.');
+    }
+
+    // Build query with optional category filter
+    let whereClause = '1=1';
+    let params: any[] = [];
+
+    if (category) {
+      whereClause += ' AND category = ?';
+      params.push(category);
+    }
+
+    const gossipStmt = this.db.prepare(`
+      SELECT 
+        message_id, source_bot_id, content, category, 
+        confidence_score, created_at, metadata
+      FROM gossip_messages
+      WHERE ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT ?
+    `);
+    
+    const gossips = gossipStmt.all(...params, limit) as any[];
+
+    // Combine gossip text for easy reading
+    const combinedTexts = gossips.map(gossip => {
+      const source = gossip.source_bot_id.split('@')[0] || 'Unknown';
+      const timestamp = new Date(gossip.created_at).toLocaleString();
+      const confidence = gossip.confidence_score ? ` (${gossip.confidence_score}% confidence)` : '';
+      
+      return `[${timestamp}] ${source}${confidence}: ${gossip.content}`;
+    });
+
+    const combinedText = combinedTexts.join('\n\n');
+
+    // Generate summary
+    const categories = [...new Set(gossips.map(g => g.category).filter(Boolean))];
+    const sources = [...new Set(gossips.map(g => g.source_bot_id.split('@')[0]))];
+
+    this.logger.info('📖 Gossips reviewed', {
+      count: gossips.length,
+      categories: categories.length,
+      sources: sources.length,
+      combinedLength: combinedText.length
+    });
+
+    return {
+      gossips: gossips.map(gossip => ({
+        id: gossip.message_id,
+        source: gossip.source_bot_id,
+        content: gossip.content,
+        category: gossip.category,
+        confidence: gossip.confidence_score,
+        timestamp: gossip.created_at
+      })),
+      combinedText,
+      summary: {
+        total: gossips.length,
+        categories,
+        sources
+      }
     };
   }
 }

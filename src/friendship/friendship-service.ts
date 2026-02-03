@@ -360,9 +360,9 @@ export class FriendshipService {
   }
 
   /**
-   * Add friend by request ID - handles both local acceptance and automatic federated challenges
+   * Accept friend by request ID - handles both local acceptance and automatic federated challenges with verification
    */
-  async addFriendByRequestId(requestId: string): Promise<{ status: string; friendshipId?: string; challengeId?: string; message?: string }> {
+  async acceptFriendByRequestId(requestId: string, challengeResponse?: string): Promise<{ status: string; friendshipId?: string; challengeId?: string; message?: string }> {
     // Get the friendship request
     const friendship = this.database.prepare(`
       SELECT * FROM friendships WHERE id = ?
@@ -405,14 +405,37 @@ export class FriendshipService {
         message: 'Local friend request accepted immediately'
       };
     } else {
-      // Federated domain - initiate challenge automatically
-      const challengeResult = await this.initiateDomainChallenge(requestId);
-      
-      return {
-        status: 'challenge_sent',
-        challengeId: challengeResult.challengeId,
-        message: 'Federated domain challenge initiated - awaiting verification'
-      };
+      // Federated domain - handle challenge process
+      if (friendship.status === 'pending') {
+        // First call - initiate challenge
+        const challengeResult = await this.initiateDomainChallenge(requestId);
+        return {
+          status: 'challenge_sent',
+          challengeId: challengeResult.challengeId,
+          message: 'Federated domain challenge initiated - call acceptFriend again with challengeResponse'
+        };
+      } else if (friendship.status === 'challenging' && challengeResponse) {
+        // Second call - verify challenge response
+        const verificationResult = await this.verifyDomainChallenge(
+          JSON.parse(friendship.metadata || '{}').challengeId,
+          challengeResponse
+        );
+        
+        if (verificationResult.verified) {
+          return {
+            status: 'accepted',
+            friendshipId: verificationResult.friendshipId,
+            message: 'Federated domain verified and friendship established'
+          };
+        } else {
+          return {
+            status: 'challenge_failed',
+            message: 'Challenge verification failed - friendship rejected'
+          };
+        }
+      } else {
+        throw new Error('Invalid federated friendship state or missing challenge response');
+      }
     }
   }
 
@@ -535,6 +558,47 @@ export class FriendshipService {
     return {
       deletedCount: result.changes || 0,
       message: `Deleted ${result.changes} friend request(s)`
+    };
+  }
+
+  /**
+   * Remove/unfriend an active friendship
+   */
+  async removeFriend(friendDomain: string, clientIP?: string): Promise<{ success: boolean; message: string }> {
+    // Rate limiting
+    const rateLimitKey = clientIP || this.config.botDomain;
+    if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'removeFriend')) {
+      throw new Error('Rate limit exceeded for removing friends. Please try again later.');
+    }
+
+    // Find the active friendship
+    const friendship = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE friend_domain = ? AND status = 'active'
+    `).get(friendDomain);
+
+    if (!friendship) {
+      return {
+        success: false,
+        message: `No active friendship found with ${friendDomain}`
+      };
+    }
+
+    // Remove the friendship (delete the record)
+    const deleteStmt = this.database.prepare(`
+      DELETE FROM friendships WHERE id = ?
+    `);
+    deleteStmt.run(friendship.id);
+
+    this.logger.info('💔 Friendship removed', {
+      friendDomain,
+      friendshipId: friendship.id,
+      removedBy: this.config.botDomain
+    });
+
+    return {
+      success: true,
+      message: `Friendship with ${friendDomain} has been removed`
     };
   }
 

@@ -272,15 +272,15 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                 }
               }
               
-              // Accept friend request (add friend) - handles both local and federated with auto-challenge
-              if (request.method === 'botnet.addFriend') {
+              // Accept friend request - handles both local and federated with auto-challenge
+              if (request.method === 'botnet.acceptFriend') {
                 try {
-                  const { requestId } = request.params || {};
+                  const { requestId, challengeResponse } = request.params || {};
                   if (!requestId) {
                     throw new Error('requestId parameter required');
                   }
                   
-                  const result = await botnetService.addFriend(requestId);
+                  const result = await botnetService.acceptFriend(requestId, challengeResponse);
                   
                   const response = {
                     jsonrpc: '2.0',
@@ -288,6 +288,8 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                       status: result.status, // 'accepted' for local, 'challenge_sent' for federated
                       requestId,
                       friendshipId: result.friendshipId,
+                      challengeId: result.challengeId,
+                      message: result.message,
                       timestamp: new Date().toISOString()
                     },
                     id: request.id
@@ -301,7 +303,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                     jsonrpc: '2.0',
                     error: {
                       code: -32603,
-                      message: error instanceof Error ? error.message : 'Failed to add friend'
+                      message: error instanceof Error ? error.message : 'Failed to accept friend'
                     },
                     id: request.id
                   };
@@ -349,22 +351,26 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                 }
               }
 
-              // Verify domain challenge response (for external domains responding to our challenges)
-              if (request.method === 'botnet.verifyChallenge') {
+              // verifyChallenge is now integrated into acceptFriend method
+              
+              // Remove friend (unfriend)
+              if (request.method === 'botnet.removeFriend') {
                 try {
-                  const { challengeId, response: challengeResponse } = request.params || {};
-                  if (!challengeId || !challengeResponse) {
-                    throw new Error('challengeId and response parameters required');
+                  const { friendDomain } = request.params || {};
+                  if (!friendDomain) {
+                    throw new Error('friendDomain parameter required');
                   }
                   
-                  const result = await botnetService.verifyChallenge(challengeId, challengeResponse);
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.removeFriend(friendDomain, Array.isArray(clientIP) ? clientIP[0] : clientIP);
                   
                   const response = {
                     jsonrpc: '2.0',
                     result: {
-                      verified: result.verified,
-                      status: result.verified ? 'friendship_established' : 'verification_failed',
-                      friendshipId: result.friendshipId
+                      success: result.success,
+                      message: result.message,
+                      friendDomain,
+                      timestamp: new Date().toISOString()
                     },
                     id: request.id
                   };
@@ -377,7 +383,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                     jsonrpc: '2.0',
                     error: {
                       code: -32603,
-                      message: error instanceof Error ? error.message : 'Failed to verify challenge'
+                      message: error instanceof Error ? error.message : 'Failed to remove friend'
                     },
                     id: request.id
                   };
@@ -675,6 +681,99 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                     error: {
                       code: -32603,
                       message: error instanceof Error ? error.message : 'Failed to set response'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Share gossip with friends
+              if (request.method === 'botnet.shareGossip') {
+                try {
+                  const { content, category, tags } = request.params || {};
+                  if (!content) {
+                    throw new Error('content parameter required');
+                  }
+                  
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.shareGossip(
+                    content, 
+                    category || 'general', 
+                    tags || [], 
+                    Array.isArray(clientIP) ? clientIP[0] : clientIP
+                  );
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      messageId: result.messageId,
+                      sharedWithFriends: result.sharedWithFriends,
+                      message: result.message,
+                      content,
+                      category: category || 'general',
+                      tags: tags || [],
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to share gossip'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Review gossips
+              if (request.method === 'botnet.reviewGossips') {
+                try {
+                  const { limit, category } = request.params || {};
+                  
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.reviewGossips(
+                    limit || 20, 
+                    category, 
+                    Array.isArray(clientIP) ? clientIP[0] : clientIP
+                  );
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      gossips: result.gossips,
+                      combinedText: result.combinedText,
+                      summary: result.summary,
+                      limit: limit || 20,
+                      category,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to review gossips'
                     },
                     id: request.id
                   };
@@ -1332,7 +1431,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                 <div class="stat-label">minutes online</div>
             </div>
             <div class="stat">
-                <div class="stat-value">9</div>
+                <div class="stat-value">10</div>
                 <div class="stat-label">social methods</div>
             </div>
             <div class="stat">
@@ -1369,16 +1468,16 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                         <div class="method-desc">Review categorized requests • Local vs federated</div>
                     </div>
                     <div class="method">
-                        <div class="method-name">botnet.addFriend()</div>
-                        <div class="method-desc">Accept request • Auto-challenge federated domains</div>
+                        <div class="method-name">botnet.acceptFriend()</div>
+                        <div class="method-desc">Accept request • Auto-challenge & verify federated domains</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.listFriends()</div>
                         <div class="method-desc">List active friends • Rate limited access</div>
                     </div>
                     <div class="method">
-                        <div class="method-name">botnet.verifyChallenge()</div>
-                        <div class="method-desc">Verify domain ownership • Security protocol</div>
+                        <div class="method-name">botnet.removeFriend()</div>
+                        <div class="method-desc">Remove friendship • Unfriend domain</div>
                     </div>
                 </div>
             </div>
@@ -1406,11 +1505,11 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet.shareGossip()</div>
-                        <div class="method-desc">Broadcast info to network • Anonymous options</div>
+                        <div class="method-desc">Share gossip with friends • Category & tags support</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.reviewGossips()</div>
-                        <div class="method-desc">Review network updates • Trust scoring</div>
+                        <div class="method-desc">Review gossips & get combined text • Trust scoring</div>
                     </div>
                 </div>
             </div>
