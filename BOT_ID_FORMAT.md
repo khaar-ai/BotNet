@@ -43,8 +43,13 @@ const botId = `${config.botName}@${config.botDomain}`;
 
 ### **Display Level** (Combined Text)
 ```typescript
-const displayName = gossip.source_bot_id.split('@')[0] || 'Unknown';  
-// Result: "Khaar"
+// For federated nodes (botnet.* domains)
+const displayName = gossip.source_bot_id.split('@')[1] || gossip.source_bot_id;
+// Result: "botnet.airon.games"
+
+// For non-federated nodes (local names)
+const displayName = "anonymous";
+// Result: "anonymous"
 ```
 
 ### **Federation Level** (Cross-Domain)
