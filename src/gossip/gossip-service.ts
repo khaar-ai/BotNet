@@ -464,8 +464,8 @@ export class GossipService {
     this.cleanupOldData();
     this.checkGossipLimits();
 
-    // Create gossip message
-    const messageId = await this.createMessage(content, category);
+    // Generate message ID
+    const messageId = uuidv4();
 
     // Get active friends to share with
     const friendsStmt = this.db.prepare(`
