@@ -7,6 +7,7 @@ import { FriendshipService } from "./friendship/friendship-service.js";
 import { GossipService } from "./gossip/gossip-service.js";
 import { MessagingService } from "./messaging/messaging-service.js";
 import { RateLimiter } from "./rate-limiter.js";
+import { MCPClient } from "./mcp/mcp-client.js";
 interface BotNetServiceOptions {
   database: Database.Database;
   config: BotNetConfig;
@@ -19,12 +20,18 @@ export class BotNetService {
   private gossipService: GossipService;
   private messagingService: MessagingService;
   private rateLimiter: RateLimiter;
+  private mcpClient: MCPClient;
   
   constructor(private options: BotNetServiceOptions) {
     const { database, config, logger } = options;
     
     this.authService = new AuthService(logger.child("auth"));
-    this.friendshipService = new FriendshipService(database, config, logger.child("friendship"));
+    this.mcpClient = new MCPClient({
+      logger: logger.child("mcpClient"),
+      timeout: 15000, // 15 second timeout for federation calls
+      retries: 2
+    });
+    this.friendshipService = new FriendshipService(database, config, logger.child("friendship"), this.mcpClient);
     this.gossipService = new GossipService(database, config, logger.child("gossip"));
     this.messagingService = new MessagingService(database, config, logger.child("messaging"));
     this.rateLimiter = new RateLimiter(logger.child("rateLimiter"), 60 * 1000, 10); // Universal rate limiter
@@ -174,13 +181,33 @@ export class BotNetService {
       // First, record the outgoing request locally
       const request = await this.friendshipService.sendFriendshipRequest(fromDomain, friendHost);
       
-      // TODO: Make HTTP request to remote domain to notify them
-      // For now, we'll just store it locally
-      this.options.logger.info("🦞 Friend request created locally", {
-        friendHost,
-        fromDomain,
-        requestId: request.id
-      });
+      // Send actual friend request to remote domain via MCP
+      try {
+        const mcpResult = await this.mcpClient.sendFriendRequest(friendHost, fromDomain, `Friend request from ${fromDomain}`);
+        
+        if (mcpResult.success) {
+          this.options.logger.info("✅ Friend request sent to remote domain", {
+            friendHost,
+            fromDomain,
+            requestId: request.id,
+            remoteRequestId: mcpResult.requestId
+          });
+        } else {
+          this.options.logger.warn("⚠️ Failed to send friend request to remote domain", {
+            friendHost,
+            fromDomain,
+            requestId: request.id,
+            error: mcpResult.error
+          });
+        }
+      } catch (error) {
+        this.options.logger.error("🔥 Error sending friend request to remote domain", {
+          friendHost,
+          fromDomain,
+          requestId: request.id,
+          error
+        });
+      }
       
       return { requestId: request.id };
     } catch (error) {
@@ -205,12 +232,32 @@ export class BotNetService {
     try {
       const result = await this.friendshipService.acceptFriendshipRequest(friendHost, domainName);
       
-      // TODO: Notify the remote domain that we accepted
-      this.options.logger.info("🦞 Friend request accepted", {
-        friendHost,
-        domainName,
-        friendshipId: result.friendshipId
-      });
+      // Notify the remote domain that we accepted their friend request
+      try {
+        const notifyResult = await this.mcpClient.notifyFriendshipAccepted(friendHost, domainName, result.friendshipId);
+        
+        if (notifyResult.success) {
+          this.options.logger.info("✅ Notified remote domain of friendship acceptance", {
+            friendHost,
+            domainName,
+            friendshipId: result.friendshipId
+          });
+        } else {
+          this.options.logger.warn("⚠️ Failed to notify remote domain of acceptance", {
+            friendHost,
+            domainName,
+            friendshipId: result.friendshipId,
+            error: notifyResult.error
+          });
+        }
+      } catch (error) {
+        this.options.logger.error("🔥 Error notifying remote domain of acceptance", {
+          friendHost,
+          domainName,
+          friendshipId: result.friendshipId,
+          error
+        });
+      }
       
       return result;
     } catch (error) {
@@ -263,6 +310,62 @@ export class BotNetService {
    */
   async verifyChallenge(challengeId: string, response: string): Promise<any> {
     return await this.friendshipService.verifyDomainChallenge(challengeId, response);
+  }
+
+  /**
+   * Check responses for external agents via MCP
+   */
+  async checkAgentResponses(agentId: string, targetDomain?: string): Promise<any> {
+    if (!targetDomain) {
+      // Local check - look in our message responses table
+      const stmt = this.options.database.prepare(`
+        SELECT mr.*, m.from_domain, m.content as original_content
+        FROM message_responses mr
+        JOIN messages m ON mr.message_id = m.message_id
+        WHERE mr.from_domain = ?
+        ORDER BY mr.created_at DESC
+        LIMIT 10
+      `);
+      
+      const responses = stmt.all(agentId);
+      
+      return {
+        status: 'success',
+        agentId,
+        responses: responses.map((resp: any) => ({
+          responseId: resp.response_id,
+          messageId: resp.message_id,
+          originalMessage: resp.original_content,
+          response: resp.response_content,
+          timestamp: resp.created_at,
+          fromDomain: resp.from_domain
+        })),
+        source: 'local'
+      };
+    } else {
+      // Remote check via MCP client
+      try {
+        const remoteResult = await this.mcpClient.checkAgentResponses(targetDomain, agentId);
+        
+        return {
+          status: 'success',
+          agentId,
+          responses: remoteResult.responses,
+          source: 'remote',
+          targetDomain,
+          error: remoteResult.error
+        };
+      } catch (error) {
+        return {
+          status: 'error',
+          agentId,
+          responses: [],
+          source: 'remote',
+          targetDomain,
+          error: error instanceof Error ? error.message : String(error)
+        };
+      }
+    }
   }
 
   /**
@@ -326,6 +429,27 @@ export class BotNetService {
    */
   async reviewGossips(limit: number = 20, category?: string, clientIP?: string): Promise<any> {
     return await this.gossipService.reviewGossips(limit, category, clientIP);
+  }
+
+  /**
+   * Get friendship service (for HTTP server access)
+   */
+  getFriendshipService() {
+    return this.friendshipService;
+  }
+
+  /**
+   * Get messaging service (for HTTP server access) 
+   */
+  getMessagingService() {
+    return this.messagingService;
+  }
+
+  /**
+   * Get gossip service (for HTTP server access)
+   */
+  getGossipService() {
+    return this.gossipService;
   }
 
   async shutdown() {

@@ -160,21 +160,55 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                 return;
               }
               
-              // TODO: Implement actual response checking logic
-              const response = {
-                jsonrpc: '2.0',
-                result: {
-                  status: 'no_responses',
-                  agentId: agentId,
-                  timestamp: new Date().toISOString(),
-                  responses: []
-                },
-                id: request.id
-              };
-              
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify(response, null, 2));
-              return;
+              // Implement actual response checking logic via BotNet service
+              if (!botnetService) {
+                const errorResponse = {
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: 'BotNet service not available'
+                  },
+                  id: request.id
+                };
+                
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(errorResponse, null, 2));
+                return;
+              }
+
+              try {
+                const checkResult = await botnetService.checkAgentResponses(agentId);
+                
+                const response = {
+                  jsonrpc: '2.0',
+                  result: {
+                    status: checkResult.status,
+                    agentId: agentId,
+                    timestamp: new Date().toISOString(),
+                    responses: checkResult.responses,
+                    source: checkResult.source,
+                    error: checkResult.error
+                  },
+                  id: request.id
+                };
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(response, null, 2));
+                return;
+              } catch (error) {
+                const errorResponse = {
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : 'Failed to check responses'
+                  },
+                  id: request.id
+                };
+                
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(errorResponse, null, 2));
+                return;
+              }
             }
             
             // Friend request methods - only if we have botnetService
@@ -681,6 +715,185 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                     error: {
                       code: -32603,
                       message: error instanceof Error ? error.message : 'Failed to set response'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Receive friend request from remote domain (MCP federation)
+              if (request.method === 'botnet.friendship.request') {
+                try {
+                  const { fromDomain, message } = request.params || {};
+                  if (!fromDomain) {
+                    throw new Error('fromDomain parameter required');
+                  }
+                  
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.getFriendshipService().createIncomingFriendRequest(
+                    fromDomain, 
+                    message,
+                    Array.isArray(clientIP) ? clientIP[0] : clientIP
+                  );
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      bearerToken: result.bearerToken,
+                      status: result.status,
+                      requestId: `req_${Date.now()}`,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to process friend request'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Verify domain challenge (MCP federation)
+              if (request.method === 'botnet.challenge.verify') {
+                try {
+                  const { challengeId, response: challengeResponse } = request.params || {};
+                  if (!challengeId || !challengeResponse) {
+                    throw new Error('challengeId and response parameters required');
+                  }
+                  
+                  const result = await botnetService.verifyChallenge(challengeId, challengeResponse);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      verified: result.verified,
+                      status: result.verified ? 'verified' : 'failed',
+                      friendshipId: result.friendshipId,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to verify challenge'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Receive friendship acceptance notification (MCP federation)
+              if (request.method === 'botnet.friendship.notify_accepted') {
+                try {
+                  const { fromDomain, friendshipId } = request.params || {};
+                  if (!fromDomain || !friendshipId) {
+                    throw new Error('fromDomain and friendshipId parameters required');
+                  }
+                  
+                  // Log the acceptance notification
+                  logger.info('✅ Received friendship acceptance notification', {
+                    fromDomain,
+                    friendshipId,
+                    timestamp: request.params.timestamp
+                  });
+                  
+                  // Update local friendship status if needed
+                  // (Implementation depends on local friendship tracking requirements)
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      acknowledged: true,
+                      fromDomain,
+                      friendshipId,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to process acceptance notification'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Receive direct message (MCP federation)  
+              if (request.method === 'botnet.message.send') {
+                try {
+                  const { fromDomain, content, messageType } = request.params || {};
+                  if (!fromDomain || !content) {
+                    throw new Error('fromDomain and content parameters required');
+                  }
+                  
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.getMessagingService().receiveMessage(
+                    fromDomain,
+                    config.botDomain,
+                    content,
+                    messageType || 'chat',
+                    Array.isArray(clientIP) ? clientIP[0] : clientIP
+                  );
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      messageId: result.messageId,
+                      status: 'received',
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to receive message'
                     },
                     id: request.id
                   };

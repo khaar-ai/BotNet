@@ -325,4 +325,57 @@ export class MessagingService {
       message: `Deleted ${result.changes} message(s)`
     };
   }
+
+  /**
+   * Receive incoming message from remote domain (MCP federation)
+   */
+  async receiveMessage(fromDomain: string, toDomain: string, content: string, messageType: string = 'chat', clientIP?: string): Promise<{ messageId: string; status: string }> {
+    // Rate limiting
+    const rateLimitKey = clientIP || fromDomain;
+    if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'receiveMessage')) {
+      throw new Error('Rate limit exceeded for receiving messages. Please try again later.');
+    }
+
+    const messageId = uuidv4();
+    const nodeType = this.determineNodeType(fromDomain);
+    
+    // Store incoming message
+    const insertStmt = this.database.prepare(`
+      INSERT INTO messages (
+        message_id, from_domain, to_domain, content, message_type, 
+        status, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    const metadata = JSON.stringify({
+      receivedAt: new Date().toISOString(),
+      nodeType,
+      source: 'mcp_federation',
+      clientIP: clientIP
+    });
+    
+    insertStmt.run(
+      messageId,
+      fromDomain,
+      toDomain,
+      content,
+      messageType,
+      'delivered', // Mark as delivered since we received it
+      metadata
+    );
+    
+    this.logger.info('📨 Message received via MCP', {
+      messageId,
+      fromDomain,
+      toDomain,
+      messageType,
+      nodeType,
+      contentLength: content.length
+    });
+    
+    return {
+      messageId,
+      status: 'received'
+    };
+  }
 }

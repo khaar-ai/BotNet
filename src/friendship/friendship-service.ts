@@ -4,6 +4,7 @@
 import type Database from "better-sqlite3";
 import type { BotNetConfig } from "../../index.js";
 import { RateLimiter } from "../rate-limiter.js";
+import type { MCPClient } from "../mcp/mcp-client.js";
 
 export interface Friendship {
   id: string;
@@ -36,15 +37,17 @@ export class FriendshipService {
     error: (message: string, ...args: any[]) => void;
     warn: (message: string, ...args: any[]) => void;
   };
+  private mcpClient: MCPClient;
   
   private friendships: Map<string, Friendship> = new Map();
   private pendingRequests: Map<string, FriendshipRequest> = new Map();
   private rateLimiter: RateLimiter;
 
-  constructor(database: Database.Database, config: BotNetConfig, logger: FriendshipService['logger']) {
+  constructor(database: Database.Database, config: BotNetConfig, logger: FriendshipService['logger'], mcpClient: MCPClient) {
     this.database = database;
     this.config = config;
     this.logger = logger;
+    this.mcpClient = mcpClient;
     this.rateLimiter = new RateLimiter(logger, 60 * 1000, 5); // 5 friendship ops per minute
   }
 
@@ -351,12 +354,45 @@ export class FriendshipService {
       attempt: updatedMetadata.challengeAttempts
     });
     
-    // TODO: Send actual HTTP challenge to the domain
-    // For now, just return the challenge info
-    return {
-      challengeId,
-      status: 'challenge_sent'
-    };
+    // Send actual challenge to remote domain via MCP
+    try {
+      const challengeResult = await this.mcpClient.sendDomainChallenge(
+        friendship.friend_domain,
+        challengeId,
+        challengeToken
+      );
+      
+      if (challengeResult.success) {
+        this.logger.info('✅ Domain challenge sent successfully', {
+          fromDomain: friendship.friend_domain,
+          challengeId
+        });
+      } else {
+        this.logger.warn('⚠️ Domain challenge failed to send', {
+          fromDomain: friendship.friend_domain,
+          challengeId,
+          error: challengeResult.error
+        });
+      }
+      
+      // Return challenge info regardless of send success (stored locally)
+      return {
+        challengeId,
+        status: challengeResult.success ? 'challenge_sent' : 'challenge_send_failed'
+      };
+    } catch (error) {
+      this.logger.error('🔥 Failed to send domain challenge', {
+        fromDomain: friendship.friend_domain,
+        challengeId,
+        error
+      });
+      
+      // Return challenge info even if send failed (challenge is stored locally)
+      return {
+        challengeId,
+        status: 'challenge_send_failed'
+      };
+    }
   }
 
   /**
