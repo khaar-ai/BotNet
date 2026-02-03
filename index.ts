@@ -1,12 +1,14 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import http from "http";
 import { z } from "zod";
+import { createBotNetServer } from "./src/http-server.js";
 
 // Configuration schema
 const BotNetConfigSchema = z.object({
-  botName: z.string().default("TestBot"),
-  botDomain: z.string().default("botnet-test.com"),
-  botDescription: z.string().default("A friendly BotNet bot"),
-  capabilities: z.array(z.string()).default(["conversation", "collaboration"]),
+  botName: z.string().default("Khaar"),
+  botDomain: z.string().default("khaar.airon.games"),
+  botDescription: z.string().default("A Dragon BotNet node"),
+  capabilities: z.array(z.string()).default(["conversation", "collaboration", "federation"]),
   tier: z.enum(["bootstrap", "standard", "pro", "enterprise"]).default("standard"),
   databasePath: z.string().default("./data/botnet.db"),
   httpPort: z.number().default(8080),
@@ -24,40 +26,31 @@ const plugin = {
   register(api: OpenClawPluginApi) {
     console.log("🐉 BotNet plugin loading...");
     
-    let serverProcess: any = null;
+    let httpServer: http.Server | null = null;
+    const config = BotNetConfigSchema.parse(api.pluginConfig || {});
     
-    // Register background service for HTTP server auto-start
+    // Register background service for in-process HTTP server
     api.registerService({
       id: "botnet-server",
       start: async () => {
-        console.log("🐉 Starting BotNet HTTP server service...");
+        console.log("🐉 Starting BotNet HTTP server service (in-process)...");
         
         try {
-          const { spawn } = await import('child_process');
-          const path = await import('path');
-          
-          const serverPath = path.join(__dirname, 'server.cjs');
-          
-          serverProcess = spawn('node', [serverPath], {
-            detached: false, // Keep attached for proper lifecycle management
-            stdio: ['ignore', 'pipe', 'pipe'] // Capture logs
+          // Create HTTP server in-process using our server factory
+          httpServer = createBotNetServer({
+            config,
+            logger: api.logger
           });
           
-          serverProcess.stdout?.on('data', (data: Buffer) => {
-            api.logger.info(`[BotNet Server] ${data.toString().trim()}`);
+          // Start the server and wait for it to be ready
+          await new Promise<void>((resolve, reject) => {
+            httpServer!.on('error', reject);
+            httpServer!.listen(config.httpPort, () => {
+              console.log(`🐉 BotNet HTTP server started on port ${config.httpPort}`);
+              api.logger.info(`🐉 BotNet HTTP server started on port ${config.httpPort} (in-process)`);
+              resolve();
+            });
           });
-          
-          serverProcess.stderr?.on('data', (data: Buffer) => {
-            api.logger.error(`[BotNet Server] ${data.toString().trim()}`);
-          });
-          
-          serverProcess.on('close', (code: number) => {
-            api.logger.info(`🐉 BotNet server process exited with code ${code}`);
-            serverProcess = null;
-          });
-          
-          console.log(`🐉 BotNet server started (PID: ${serverProcess.pid})`);
-          api.logger.info(`🐉 BotNet HTTP server started on port 8080 (PID: ${serverProcess.pid})`);
           
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -70,25 +63,23 @@ const plugin = {
       stop: async () => {
         console.log("🐉 Stopping BotNet HTTP server service...");
         
-        if (serverProcess && !serverProcess.killed) {
+        if (httpServer) {
           try {
-            serverProcess.kill('SIGTERM');
-            // Give it time to gracefully shut down
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            if (!serverProcess.killed) {
-              serverProcess.kill('SIGKILL');
-            }
-            
-            console.log("🐉 BotNet server stopped");
-            api.logger.info("🐉 BotNet HTTP server stopped");
+            // Graceful shutdown of HTTP server
+            await new Promise<void>((resolve) => {
+              httpServer!.close(() => {
+                console.log("🐉 BotNet HTTP server stopped");
+                api.logger.info("🐉 BotNet HTTP server stopped gracefully");
+                resolve();
+              });
+            });
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             api.logger.error(`🐉 Error stopping BotNet server: ${errorMsg}`);
           }
+          
+          httpServer = null;
         }
-        
-        serverProcess = null;
       }
     });
     
