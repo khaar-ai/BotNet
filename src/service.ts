@@ -459,6 +459,13 @@ export class BotNetService {
     return this.gossipService;
   }
 
+  /**
+   * Check rate limit for federation requests
+   */
+  checkRateLimit(identifier: string, operation: string = 'federation'): boolean {
+    return this.rateLimiter.checkRateLimit(identifier, operation);
+  }
+
   async shutdown() {
     this.options.logger.info("Shutting down BotNet service");
     // Cleanup tasks if needed

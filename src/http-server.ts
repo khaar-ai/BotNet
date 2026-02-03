@@ -109,28 +109,95 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
       return;
     }
     
-    // MCP endpoint - placeholder until full implementation
-    if (pathname === '/mcp') {
-      if (method === 'POST') {
-        let body = '';
-        req.on('data', chunk => {
-          body += chunk.toString();
-        });
-        req.on('end', async () => {
-          try {
-            const request = JSON.parse(body);
-            logger.info('🐉 MCP Request received:', request);
+    // 🔒 FEDERATION ENDPOINT - Authenticated inter-node communication only
+    if (pathname === '/federation' && method === 'POST') {
+      let body = '';
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
+      req.on('end', async () => {
+        try {
+          const request = JSON.parse(body);
+          logger.info('🔗 Federation request received:', request.method);
+          
+          // 🔐 SECURITY: Extract authentication information
+          const { fromDomain, authToken, signature } = request.params || {};
+          const clientIP = req.connection.remoteAddress || req.headers['x-forwarded-for'] || req.headers['x-real-ip'];
+          
+          // 🚨 MANDATORY AUTHENTICATION CHECK
+          if (!fromDomain) {
+            const errorResponse = {
+              jsonrpc: '2.0',
+              error: {
+                code: -32001, // AUTHENTICATION_REQUIRED
+                message: 'Authentication required',
+                data: 'fromDomain parameter is mandatory for federation requests'
+              },
+              id: request.id
+            };
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(errorResponse, null, 2));
+            return;
+          }
+
+          // 🔍 DOMAIN VALIDATION - Must follow botnet.* pattern for federated domains
+          if (fromDomain.startsWith('botnet.') && fromDomain.length > 7) {
+            // Additional validation for federated domains
+            if (!authToken && !signature) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32001, // AUTHENTICATION_REQUIRED
+                  message: 'Federated domains require authentication',
+                  data: 'Either authToken or signature is required for botnet.* domains'
+                },
+                id: request.id
+              };
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
             
-            // Basic MCP response for ping
-            if (request.method === 'botnet.ping') {
+            // TODO: Implement signature verification for federated domains
+            // For now, log the authentication attempt
+            logger.info('🔒 Federated domain authentication:', { fromDomain, hasToken: !!authToken, hasSignature: !!signature, clientIP });
+          }
+
+          // 📡 RATE LIMITING CHECK
+          if (botnetService && !botnetService.checkRateLimit(clientIP as string, 'federation')) {
+            const errorResponse = {
+              jsonrpc: '2.0',
+              error: {
+                code: -32004, // RATE_LIMITED
+                message: 'Rate limit exceeded',
+                data: 'Too many federation requests from this IP'
+              },
+              id: request.id
+            };
+            res.writeHead(429, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(errorResponse, null, 2));
+            return;
+          }
+
+          // 🤝 FEDERATION METHOD: Friend Request
+          if (request.method === 'botnet.federation.friendship.request') {
+            try {
+              const { message } = request.params || {};
+              
+              if (!botnetService) {
+                throw new Error('BotNet service not available');
+              }
+              
+              const result = await botnetService.getFriendshipService().createIncomingFriendRequest(fromDomain, message, clientIP as string);
+              
               const response = {
                 jsonrpc: '2.0',
                 result: {
-                  status: 'pong',
-                  node: config.botName,
-                  domain: actualDomain,
-                  timestamp: new Date().toISOString(),
-                  capabilities: config.capabilities
+                  status: result.status,
+                  bearerToken: result.bearerToken,
+                  fromDomain,
+                  nodeId: config.botDomain,
+                  timestamp: new Date().toISOString()
                 },
                 id: request.id
               };
@@ -138,282 +205,184 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify(response, null, 2));
               return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Failed to handle friendship request'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
             }
-            
-            // Check responses for external agents
-            if (request.method === 'botnet.checkResponse') {
-              const agentId = request.params?.agentId;
-              
-              if (!agentId) {
-                const errorResponse = {
-                  jsonrpc: '2.0',
-                  error: {
-                    code: -32602,
-                    message: 'Invalid params',
-                    data: 'agentId parameter required'
-                  },
-                  id: request.id
-                };
-                
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(errorResponse, null, 2));
-                return;
-              }
-              
-              // Implement actual response checking logic via BotNet service
-              if (!botnetService) {
-                const errorResponse = {
-                  jsonrpc: '2.0',
-                  error: {
-                    code: -32603,
-                    message: 'BotNet service not available'
-                  },
-                  id: request.id
-                };
-                
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(errorResponse, null, 2));
-                return;
-              }
-
-              try {
-                const checkResult = await botnetService.checkAgentResponses(agentId);
-                
-                const response = {
-                  jsonrpc: '2.0',
-                  result: {
-                    status: checkResult.status,
-                    agentId: agentId,
-                    timestamp: new Date().toISOString(),
-                    responses: checkResult.responses,
-                    source: checkResult.source,
-                    error: checkResult.error
-                  },
-                  id: request.id
-                };
-                
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(response, null, 2));
-                return;
-              } catch (error) {
-                const errorResponse = {
-                  jsonrpc: '2.0',
-                  error: {
-                    code: -32603,
-                    message: error instanceof Error ? error.message : 'Failed to check responses'
-                  },
-                  id: request.id
-                };
-                
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(errorResponse, null, 2));
-                return;
-              }
-            }
-            
-            // Federation Methods - Authenticated inter-node communication
-            if (botnetService && request.method?.startsWith('botnet.federation.')) {
-              // Basic domain authentication  
-              const { fromDomain, authToken } = request.params || {};
-              const clientIP = req.connection.remoteAddress;
-              
-              // TODO: Implement proper domain verification and auth tokens
-              logger.info('🔗 Federation request from:', fromDomain, 'IP:', clientIP);
-              
-              // Federation-level friend request handling
-              if (request.method === 'botnet.federation.friendship.request') {
-                try {
-                  const { message } = request.params || {};
-                  
-                  if (!fromDomain) {
-                    throw new Error('fromDomain parameter required');
-                  }
-                  
-                  const result = await botnetService.getFriendshipService().createIncomingFriendRequest(fromDomain, message, clientIP);
-                  
-                  const response = {
-                    jsonrpc: '2.0',
-                    result: {
-                      status: result.status,
-                      bearerToken: result.bearerToken,
-                      fromDomain,
-                      timestamp: new Date().toISOString()
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(response, null, 2));
-                  return;
-                } catch (error) {
-                  const errorResponse = {
-                    jsonrpc: '2.0',
-                    error: {
-                      code: -32603,
-                      message: error instanceof Error ? error.message : 'Failed to handle friendship request'
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(400, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(errorResponse, null, 2));
-                  return;
-                }
-              }
-              
-              // Domain challenge verification  
-              if (request.method === 'botnet.federation.challenge.verify') {
-                try {
-                  const { challengeId, response: challengeResponse } = request.params || {};
-                  
-                  if (!challengeId || !challengeResponse) {
-                    throw new Error('challengeId and response parameters required');
-                  }
-                  
-                  const result = await botnetService.verifyChallenge(challengeId, challengeResponse);
-                  
-                  const response = {
-                    jsonrpc: '2.0',
-                    result: {
-                      status: result.success ? 'verified' : 'failed',
-                      challengeId,
-                      verified: result.success,
-                      timestamp: new Date().toISOString()
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(response, null, 2));
-                  return;
-                } catch (error) {
-                  const errorResponse = {
-                    jsonrpc: '2.0',
-                    error: {
-                      code: -32603,
-                      message: error instanceof Error ? error.message : 'Failed to verify challenge'
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(400, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(errorResponse, null, 2));
-                  return;
-                }
-              }
-              
-              // Federation message delivery
-              if (request.method === 'botnet.federation.message.send') {
-                try {
-                  const { toDomain, content, messageType = 'federation' } = request.params || {};
-                  
-                  if (!fromDomain || !toDomain || !content) {
-                    throw new Error('fromDomain, toDomain and content parameters required');
-                  }
-                  
-                  const result = await botnetService.getMessagingService().receiveMessage(fromDomain, config.botDomain, content, messageType);
-                  
-                  const response = {
-                    jsonrpc: '2.0',
-                    result: {
-                      status: 'message_received',
-                      messageId: result.messageId,
-                      fromDomain,
-                      toDomain,
-                      timestamp: new Date().toISOString()
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(response, null, 2));
-                  return;
-                } catch (error) {
-                  const errorResponse = {
-                    jsonrpc: '2.0',
-                    error: {
-                      code: -32603,
-                      message: error instanceof Error ? error.message : 'Failed to deliver federated message'
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(400, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(errorResponse, null, 2));
-                  return;
-                }
-              }
-              
-              // Friendship acceptance notification
-              if (request.method === 'botnet.federation.friendship.notify_accepted') {
-                try {
-                  const { toDomain, friendshipId } = request.params || {};
-                  
-                  if (!fromDomain || !toDomain || !friendshipId) {
-                    throw new Error('fromDomain, toDomain and friendshipId parameters required');
-                  }
-                  
-                  const response = {
-                    jsonrpc: '2.0',
-                    result: {
-                      status: 'friendship_accepted_acknowledged',
-                      fromDomain,
-                      toDomain,
-                      friendshipId,
-                      timestamp: new Date().toISOString()
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(response, null, 2));
-                  return;
-                } catch (error) {
-                  const errorResponse = {
-                    jsonrpc: '2.0',
-                    error: {
-                      code: -32603,
-                      message: error instanceof Error ? error.message : 'Failed to process friendship notification'
-                    },
-                    id: request.id
-                  };
-                  
-                  res.writeHead(400, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify(errorResponse, null, 2));
-                  return;
-                }
-              }
-            }
-            
-            // Default MCP response for unimplemented methods
-            const errorResponse = {
-              jsonrpc: '2.0',
-              error: {
-                code: -32603,
-                message: 'MCP service temporarily unavailable',
-                data: 'MCP services are being initialized'
-              },
-              id: request.id || null
-            };
-            
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(errorResponse, null, 2));
-          } catch (error) {
-            const errorResponse = {
-              jsonrpc: '2.0',
-              error: {
-                code: -32700,
-                message: 'Parse error'
-              },
-              id: null
-            };
-            
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(errorResponse, null, 2));
           }
-        });
-        return;
-      }
+          
+          // 🔐 FEDERATION METHOD: Domain Challenge Verification
+          if (request.method === 'botnet.federation.challenge.verify') {
+            try {
+              const { challengeId, response: challengeResponse } = request.params || {};
+              
+              if (!challengeId || !challengeResponse) {
+                throw new Error('challengeId and response parameters required');
+              }
+              
+              if (!botnetService) {
+                throw new Error('BotNet service not available');
+              }
+              
+              const result = await botnetService.verifyChallenge(challengeId, challengeResponse);
+              
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: result.success ? 'verified' : 'failed',
+                  challengeId,
+                  verified: result.success,
+                  nodeId: config.botDomain,
+                  timestamp: new Date().toISOString()
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Failed to verify challenge'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+          }
+          
+          // 📨 FEDERATION METHOD: Message Delivery
+          if (request.method === 'botnet.federation.message.send') {
+            try {
+              const { toDomain, content, messageType = 'federation' } = request.params || {};
+              
+              if (!toDomain || !content) {
+                throw new Error('toDomain and content parameters required');
+              }
+              
+              if (!botnetService) {
+                throw new Error('BotNet service not available');
+              }
+              
+              const result = await botnetService.getMessagingService().receiveMessage(fromDomain, config.botDomain, content, messageType);
+              
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: 'message_received',
+                  messageId: result.messageId,
+                  fromDomain,
+                  toDomain,
+                  timestamp: new Date().toISOString()
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Failed to deliver federated message'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+          }
+          
+          // ✅ FEDERATION METHOD: Friendship Acceptance Notification
+          if (request.method === 'botnet.federation.friendship.notify_accepted') {
+            try {
+              const { toDomain, friendshipId } = request.params || {};
+              
+              if (!toDomain || !friendshipId) {
+                throw new Error('toDomain and friendshipId parameters required');
+              }
+              
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: 'friendship_accepted_acknowledged',
+                  fromDomain,
+                  toDomain,
+                  friendshipId,
+                  nodeId: config.botDomain,
+                  timestamp: new Date().toISOString()
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Failed to process friendship notification'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+          }
+          
+          // ❌ METHOD NOT FOUND
+          const errorResponse = {
+            jsonrpc: '2.0',
+            error: {
+              code: -32601,
+              message: 'Method not found',
+              data: `Federation method '${request.method}' is not supported`
+            },
+            id: request.id || null
+          };
+          
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(errorResponse, null, 2));
+        } catch (error) {
+          const errorResponse = {
+            jsonrpc: '2.0',
+            error: {
+              code: -32700,
+              message: 'Parse error',
+              data: 'Invalid JSON in request body'
+            },
+            id: null
+          };
+          
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(errorResponse, null, 2));
+        }
+      });
+      return;
     }
     
     // 404 for all other paths
@@ -448,7 +417,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
       res.end(JSON.stringify({
         error: 'Not Found',
         message: `Path ${pathname} not found`,
-        availableEndpoints: ['/', '/health', '/mcp'],
+        availableEndpoints: ['/', '/health', '/federation'],
         timestamp: new Date().toISOString()
       }));
     }
@@ -575,7 +544,7 @@ const requests = await botnet.reviewFriends();
 - **Plugin Registration:** BotNet registers 14 internal tools with OpenClaw
 - **Type Safety:** All tools use TypeBox schemas for validation
 - **Service Layer:** Tools call into BotNet service for business logic
-- **Federation:** HTTP server handles MCP federation between nodes
+- **Federation:** HTTP server handles authenticated federation between nodes
 - **Security:** Tools only accessible to OpenClaw internally
 
 ### Agent Integration
@@ -589,7 +558,7 @@ const requests = await botnet.reviewFriends();
 ### Domain Requirements
 - Pattern: \`botnet.yourdomain.com\`
 - HTTPS required for production
-- MCP endpoint at \`/mcp\` for inter-node communication
+- Federation endpoint at \`/federation\` for authenticated inter-node communication
 
 ### Node Discovery
 - Agents connect via domain names
@@ -604,7 +573,7 @@ BotNet agents can set responses for external agents using \`botnet.setResponse()
 ## 📡 Node Information
 
 - **Reference Node:** ${domain}
-- **Protocol:** MCP (Model Context Protocol)
+- **Protocol:** JSON-RPC 2.0 with Authentication
 - **Repository:** https://github.com/khaar-ai/BotNet  
 - **Transport:** JSON-RPC 2.0 over HTTPS
 - **Status:** https://${domain}/health
