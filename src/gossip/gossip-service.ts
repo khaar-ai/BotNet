@@ -599,4 +599,71 @@ export class GossipService {
       }
     };
   }
+
+  /**
+   * Receive gossip from a federated friend (via /federation endpoint)
+   */
+  async receiveGossip(fromDomain: string, content: string, category: string = 'general', tags: string[] = []): Promise<{ gossipId: string; status: string }> {
+    this.logger.info('📡 Receiving gossip from federation', { fromDomain, category, contentLength: content.length });
+    
+    try {
+      this.checkGossipLimits();
+      
+      const gossipId = uuidv4();
+      const confidenceScore = 75; // Higher confidence for messages from friends
+      
+      // Store the received gossip
+      const stmt = this.db.prepare(`
+        INSERT INTO gossip_messages (
+          message_id, source_bot_id, content, category, 
+          confidence_score, metadata, created_at, received_at
+        ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `);
+      
+      stmt.run(
+        gossipId,
+        fromDomain,
+        content,
+        category,
+        confidenceScore,
+        JSON.stringify({ 
+          source: 'federation',
+          tags,
+          trust_level: 'friend'
+        })
+      );
+      
+      // Update friendship last interaction
+      try {
+        this.db.prepare(`
+          UPDATE friendships 
+          SET last_seen = CURRENT_TIMESTAMP 
+          WHERE friend_domain = ?
+        `).run(fromDomain);
+      } catch (error) {
+        // Friendship might not exist locally, but that's ok for federation
+        this.logger.warn('Could not update friendship last_seen for federation gossip', { fromDomain, error });
+      }
+      
+      this.logger.info('✅ Successfully received federation gossip', {
+        gossipId,
+        fromDomain,
+        category
+      });
+      
+      return {
+        gossipId,
+        status: 'received'
+      };
+      
+    } catch (error) {
+      this.logger.error('❌ Failed to receive federation gossip', {
+        fromDomain,
+        category,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      throw new Error(`Failed to store gossip: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
 }

@@ -109,8 +109,383 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
       return;
     }
     
-    // 🔒 FEDERATION ENDPOINT - Authenticated inter-node communication only
-    if (pathname === '/federation' && method === 'POST') {
+    // 🤖 MCP ENDPOINT - Standard Model Context Protocol for bot-to-bot communication
+    if (pathname === '/mcp' && method === 'POST') {
+      let body = '';
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
+      req.on('end', async () => {
+        try {
+          const request = JSON.parse(body);
+          logger.info('🤖 MCP Request received:', request.method);
+          
+          // 🔐 AUTHENTICATION: Extract Bearer token from Authorization header
+          const authHeader = req.headers.authorization;
+          const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+          
+          // 📝 PUBLIC METHODS (no authentication required)
+          const publicMethods = [
+            'botnet.ping',
+            'botnet.profile',
+            'botnet.login'
+          ];
+          
+          // 🔒 AUTHENTICATED METHODS (require valid Bearer token)
+          const authenticatedMethods = [
+            'botnet.friendship.request',
+            'botnet.friendship.accept',
+            'botnet.friendship.list',
+            'botnet.friendship.status',
+            'botnet.message.send',
+            'botnet.message.checkResponses',
+            'botnet.gossip.share',
+            'botnet.gossip.exchange',
+            'botnet.challenge.verify'
+          ];
+          
+          const allMethods = [...publicMethods, ...authenticatedMethods];
+          
+          if (!allMethods.includes(request.method)) {
+            const errorResponse = {
+              jsonrpc: '2.0',
+              error: {
+                code: -32601, // Method not found
+                message: 'Method not found',
+                data: `MCP method '${request.method}' is not supported`
+              },
+              id: request.id
+            };
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(errorResponse, null, 2));
+            return;
+          }
+          
+          // 🔐 AUTHENTICATION CHECK for protected methods
+          let authenticatedDomain: string | null = null;
+          if (authenticatedMethods.includes(request.method)) {
+            if (!bearerToken) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32001, // Authentication required
+                  message: 'Authentication required',
+                  data: 'Bearer token must be provided in Authorization header'
+                },
+                id: request.id
+              };
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+            
+            if (!botnetService) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603, // Internal error
+                  message: 'BotNet service not available'
+                },
+                id: request.id
+              };
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+            
+            // Validate Bearer token
+            const authResult = await botnetService.validateBearerToken(bearerToken);
+            if (!authResult.valid) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32002, // Invalid session
+                  message: 'Invalid or expired token',
+                  data: authResult.error || 'Token validation failed'
+                },
+                id: request.id
+              };
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+            
+            // Extract authenticated domain for use in methods
+            authenticatedDomain = authResult.domain!;
+          }
+          
+          // ====== PUBLIC METHODS ======
+          
+          // 🏓 PING - Health check
+          if (request.method === 'botnet.ping') {
+            const response = {
+              jsonrpc: '2.0',
+              result: {
+                status: 'pong',
+                node: config.botName,
+                domain: config.botDomain,
+                timestamp: new Date().toISOString(),
+                capabilities: config.capabilities,
+                protocol: 'MCP/1.0',
+                version: '1.0.0'
+              },
+              id: request.id
+            };
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(response, null, 2));
+            return;
+          }
+          
+          // 👤 PROFILE - Get bot profile
+          if (request.method === 'botnet.profile') {
+            if (!botnetService) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: 'BotNet service not available'
+                },
+                id: request.id
+              };
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+            
+            const profile = await botnetService.getBotProfile();
+            const response = {
+              jsonrpc: '2.0',
+              result: profile,
+              id: request.id
+            };
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(response, null, 2));
+            return;
+          }
+          
+          // 🔑 LOGIN - Authenticate and get Bearer token
+          if (request.method === 'botnet.login') {
+            try {
+              const { fromDomain, challenge } = request.params || {};
+              
+              if (!fromDomain) {
+                throw new Error('fromDomain parameter is required');
+              }
+              
+              if (!botnetService) {
+                throw new Error('BotNet service not available');
+              }
+              
+              const loginResult = await botnetService.login(fromDomain, challenge);
+              
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: 'authenticated',
+                  bearerToken: loginResult.bearerToken,
+                  expiresAt: loginResult.expiresAt,
+                  fromDomain,
+                  nodeId: config.botDomain,
+                  timestamp: new Date().toISOString()
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Login failed'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+          }
+          
+          // ====== AUTHENTICATED METHODS ======
+          
+          // 🤝 FRIENDSHIP REQUEST
+          if (request.method === 'botnet.friendship.request') {
+            try {
+              const { message } = request.params || {};
+              
+              if (!authenticatedDomain) {
+                throw new Error('Authentication required but no domain found');
+              }
+              
+              const result = await botnetService!.getFriendshipService().createIncomingFriendRequest(
+                authenticatedDomain, 
+                message, 
+                req.connection.remoteAddress as string
+              );
+              
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: result.status,
+                  requestId: result.bearerToken,
+                  fromDomain: authenticatedDomain,
+                  nodeId: config.botDomain,
+                  timestamp: new Date().toISOString()
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Friendship request failed'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+          }
+          
+          // 💬 MESSAGE CHECK RESPONSES
+          if (request.method === 'botnet.message.checkResponses') {
+            try {
+              const { messageIds } = request.params || {};
+              
+              if (!messageIds || !Array.isArray(messageIds)) {
+                throw new Error('messageIds array parameter required');
+              }
+              
+              const responses = await botnetService!.getMessagingService().getResponsesForMessages(messageIds);
+              
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: 'responses_found',
+                  responses,
+                  messageCount: messageIds.length,
+                  responseCount: responses.length,
+                  timestamp: new Date().toISOString()
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Failed to check responses'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+          }
+          
+          // 📡 GOSSIP SHARE
+          if (request.method === 'botnet.gossip.share') {
+            try {
+              const { content, category = 'general', tags = [] } = request.params || {};
+              
+              if (!content) {
+                throw new Error('content parameter required for gossip sharing');
+              }
+              
+              if (!authenticatedDomain) {
+                throw new Error('Authentication required but no domain found');
+              }
+              
+              const result = await botnetService!.getGossipService().receiveGossip(
+                authenticatedDomain, 
+                content, 
+                category, 
+                tags
+              );
+              
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: 'gossip_received',
+                  gossipId: result.gossipId,
+                  category,
+                  timestamp: new Date().toISOString()
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Failed to receive gossip'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+          }
+          
+          // Default: Method recognized but not implemented yet
+          const errorResponse = {
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Method not implemented',
+              data: `${request.method} is recognized but not implemented yet`
+            },
+            id: request.id
+          };
+          
+          res.writeHead(501, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(errorResponse, null, 2));
+          
+        } catch (error) {
+          const errorResponse = {
+            jsonrpc: '2.0',
+            error: {
+              code: -32700,
+              message: 'Parse error',
+              data: 'Invalid JSON in request body'
+            },
+            id: null
+          };
+          
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(errorResponse, null, 2));
+        }
+      });
+      return;
+    }
+    
+    // 🚫 FEDERATION ENDPOINT DISABLED - All communication goes through /mcp
+    if (false && pathname === '/federation' && method === 'POST') {
       let body = '';
       req.on('data', chunk => {
         body += chunk.toString();
@@ -313,6 +688,52 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
             }
           }
           
+          // 📡 FEDERATION METHOD: Gossip Sharing
+          if (request.method === 'botnet.gossip.share') {
+            try {
+              const { content, category = 'general', tags = [] } = request.params || {};
+              
+              if (!content) {
+                throw new Error('content parameter required for gossip sharing');
+              }
+              
+              if (!botnetService) {
+                throw new Error('BotNet service not available');
+              }
+              
+              const result = await botnetService.getGossipService().receiveGossip(fromDomain, content, category, tags);
+              
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: 'gossip_received',
+                  gossipId: result.gossipId,
+                  fromDomain,
+                  category,
+                  timestamp: new Date().toISOString()
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            } catch (error) {
+              const errorResponse = {
+                jsonrpc: '2.0',
+                error: {
+                  code: -32603,
+                  message: error instanceof Error ? error.message : 'Failed to receive gossip'
+                },
+                id: request.id
+              };
+              
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(errorResponse, null, 2));
+              return;
+            }
+          }
+
           // ✅ FEDERATION METHOD: Friendship Acceptance Notification
           if (request.method === 'botnet.friendship.notify_accepted') {
             try {
@@ -417,7 +838,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
       res.end(JSON.stringify({
         error: 'Not Found',
         message: `Path ${pathname} not found`,
-        availableEndpoints: ['/', '/health', '/federation'],
+        availableEndpoints: ['/', '/health', '/mcp'],
         timestamp: new Date().toISOString()
       }));
     }

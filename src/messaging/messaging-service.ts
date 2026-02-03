@@ -279,6 +279,27 @@ export class MessagingService {
       
       if (pendingCount > 0 && nodeType === 'local') {
         requiresRemoteCheck = true;
+        
+        // Automatically poll federated domains for responses
+        try {
+          this.logger.info('🔄 Auto-polling federated domains for message responses...');
+          const pollResult = await this.pollFederatedResponses();
+          
+          if (pollResult.newResponses > 0) {
+            this.logger.info('✅ Found new responses, refreshing local responses', {
+              newResponses: pollResult.newResponses
+            });
+            
+            // Refresh responses after polling
+            responses = responseStmt.all(currentDomain) as MessageResponse[];
+          }
+          
+        } catch (error) {
+          this.logger.error('⚠️ Federation polling failed during message review', {
+            error: error instanceof Error ? error.message : String(error)
+          });
+          // Continue with local responses only
+        }
       }
     }
 
@@ -483,5 +504,168 @@ export class MessagingService {
       messageId,
       status: 'received'
     };
+  }
+
+  /**
+   * Get responses for specific message IDs (used by federation)
+   */
+  async getResponsesForMessages(messageIds: string[]): Promise<MessageResponse[]> {
+    if (!messageIds.length) return [];
+    
+    const placeholders = messageIds.map(() => '?').join(',');
+    const stmt = this.database.prepare(`
+      SELECT * FROM message_responses 
+      WHERE message_id IN (${placeholders})
+      ORDER BY created_at DESC
+    `);
+    
+    const responses = stmt.all(...messageIds) as MessageResponse[];
+    
+    this.logger.info('🔍 Retrieved responses for federation check', {
+      requestedMessages: messageIds.length,
+      foundResponses: responses.length
+    });
+    
+    return responses;
+  }
+
+  /**
+   * Poll federated domains for responses to our sent messages
+   */
+  async pollFederatedResponses(): Promise<{ polledDomains: number; newResponses: number; errors: string[] }> {
+    this.logger.info('🔄 Starting federated response poll...');
+    
+    try {
+      // Get pending messages sent to federated domains
+      const pendingMessages = this.database.prepare(`
+        SELECT * FROM messages 
+        WHERE from_domain = ? 
+        AND JSON_EXTRACT(metadata, '$.toNodeType') = 'federated'
+        AND status IN ('pending', 'delivered')
+        ORDER BY created_at DESC
+        LIMIT 50
+      `).all(this.config.botDomain) as BotNetMessage[];
+
+      if (pendingMessages.length === 0) {
+        this.logger.info('📭 No pending federated messages to check');
+        return { polledDomains: 0, newResponses: 0, errors: [] };
+      }
+
+      // Group messages by target domain
+      const messagesByDomain: { [domain: string]: BotNetMessage[] } = {};
+      for (const msg of pendingMessages) {
+        if (!messagesByDomain[msg.to_domain]) {
+          messagesByDomain[msg.to_domain] = [];
+        }
+        messagesByDomain[msg.to_domain].push(msg);
+      }
+
+      let totalNewResponses = 0;
+      const errors: string[] = [];
+
+      // Poll each domain
+      for (const [domain, messages] of Object.entries(messagesByDomain)) {
+        try {
+          this.logger.info(`🌐 Polling ${domain} for ${messages.length} message responses`);
+          
+          const messageIds = messages.map(m => m.id);
+          
+          // Make MCP call to check responses
+          const response = await this.callMCPEndpoint(domain, 'botnet.message.checkResponses', {
+            messageIds
+          });
+
+          if (response.result?.responses) {
+            const newResponses = response.result.responses;
+            
+            // Store the retrieved responses
+            for (const responseData of newResponses) {
+              try {
+                const responseId = uuidv4();
+                this.database.prepare(`
+                  INSERT OR IGNORE INTO message_responses (
+                    id, message_id, from_domain, response_content, created_at, metadata
+                  ) VALUES (?, ?, ?, ?, ?, ?)
+                `).run(
+                  responseId,
+                  responseData.message_id,
+                  domain,
+                  responseData.response_content,
+                  responseData.created_at || new Date().toISOString(),
+                  JSON.stringify({ source: 'federation_poll', ...responseData.metadata })
+                );
+                
+                // Update message status to 'responded'
+                this.database.prepare(`
+                  UPDATE messages SET 
+                    status = 'responded',
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE message_id = ? AND from_domain = ?
+                `).run(responseData.message_id, this.config.botDomain);
+                
+                totalNewResponses++;
+              } catch (err) {
+                this.logger.warn('Failed to store federation response', { 
+                  messageId: responseData.message_id, 
+                  error: err instanceof Error ? err.message : String(err)
+                });
+              }
+            }
+            
+            this.logger.info(`✅ Retrieved ${newResponses.length} responses from ${domain}`);
+          }
+          
+        } catch (error) {
+          const errorMsg = `Failed to poll ${domain}: ${error instanceof Error ? error.message : String(error)}`;
+          errors.push(errorMsg);
+          this.logger.warn(errorMsg);
+        }
+      }
+
+      this.logger.info('🔄 Federation response poll complete', {
+        polledDomains: Object.keys(messagesByDomain).length,
+        newResponses: totalNewResponses,
+        errorCount: errors.length
+      });
+
+      return {
+        polledDomains: Object.keys(messagesByDomain).length,
+        newResponses: totalNewResponses,
+        errors
+      };
+
+    } catch (error) {
+      const errorMsg = `Federation poll failed: ${error instanceof Error ? error.message : String(error)}`;
+      this.logger.error(errorMsg);
+      return { polledDomains: 0, newResponses: 0, errors: [errorMsg] };
+    }
+  }
+
+  /**
+   * Make a call to an MCP endpoint
+   */
+  private async callMCPEndpoint(domain: string, method: string, params: any): Promise<any> {
+    const url = `https://${domain}/mcp`;
+    const requestBody = {
+      jsonrpc: '2.0',
+      method,
+      params,
+      id: `mcp_${Date.now()}`
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'BotNet-MCP-Client/1.0.0'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
   }
 }

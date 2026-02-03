@@ -21,6 +21,7 @@ export class BotNetService {
   private messagingService: MessagingService;
   private rateLimiter: RateLimiter;
   private mcpClient: MCPClient;
+  private bearerTokens: Map<string, { domain: string; expiresAt: Date; createdAt: Date }> = new Map();
   
   constructor(private options: BotNetServiceOptions) {
     const { database, config, logger } = options;
@@ -466,8 +467,117 @@ export class BotNetService {
     return this.rateLimiter.checkRateLimit(identifier, operation);
   }
 
+  /**
+   * MCP Authentication: Login and get Bearer token
+   */
+  async login(fromDomain: string, challenge?: string): Promise<{ bearerToken: string; expiresAt: Date }> {
+    this.options.logger.info('🔑 MCP Login attempt', { fromDomain, hasChallenge: !!challenge });
+    
+    try {
+      // Basic domain validation
+      if (!fromDomain || fromDomain.length < 3) {
+        throw new Error('Invalid domain format');
+      }
+      
+      // For federated domains (botnet.*), we could implement challenge verification
+      // For now, we'll allow any domain to login (rate limited)
+      const clientKey = fromDomain;
+      if (!this.rateLimiter.checkRateLimit(clientKey, 'login')) {
+        throw new Error('Login rate limit exceeded');
+      }
+      
+      // Generate Bearer token (secure random string)
+      const tokenBytes = new Uint8Array(32);
+      crypto.getRandomValues(tokenBytes);
+      const bearerToken = 'mcp_' + Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      // Token expires in 1 hour
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+      
+      // Store token
+      this.bearerTokens.set(bearerToken, {
+        domain: fromDomain,
+        expiresAt,
+        createdAt: new Date()
+      });
+      
+      // Cleanup expired tokens (garbage collection)
+      this.cleanupExpiredTokens();
+      
+      this.options.logger.info('✅ MCP Login successful', { 
+        fromDomain, 
+        tokenPrefix: bearerToken.substring(0, 12) + '...',
+        expiresAt 
+      });
+      
+      return { bearerToken, expiresAt };
+      
+    } catch (error) {
+      this.options.logger.error('❌ MCP Login failed', { 
+        fromDomain, 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * MCP Authentication: Validate Bearer token
+   */
+  async validateBearerToken(bearerToken: string): Promise<{ valid: boolean; domain?: string; error?: string }> {
+    try {
+      if (!bearerToken || !bearerToken.startsWith('mcp_')) {
+        return { valid: false, error: 'Invalid token format' };
+      }
+      
+      const tokenData = this.bearerTokens.get(bearerToken);
+      if (!tokenData) {
+        return { valid: false, error: 'Token not found' };
+      }
+      
+      // Check expiration
+      if (new Date() > tokenData.expiresAt) {
+        this.bearerTokens.delete(bearerToken);
+        return { valid: false, error: 'Token expired' };
+      }
+      
+      this.options.logger.info('🔐 Token validation successful', { 
+        domain: tokenData.domain,
+        tokenPrefix: bearerToken.substring(0, 12) + '...'
+      });
+      
+      return { valid: true, domain: tokenData.domain };
+      
+    } catch (error) {
+      this.options.logger.error('🔐 Token validation error', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return { valid: false, error: 'Validation error' };
+    }
+  }
+
+  /**
+   * Cleanup expired Bearer tokens
+   */
+  private cleanupExpiredTokens(): void {
+    const now = new Date();
+    let cleaned = 0;
+    
+    for (const [token, data] of this.bearerTokens.entries()) {
+      if (now > data.expiresAt) {
+        this.bearerTokens.delete(token);
+        cleaned++;
+      }
+    }
+    
+    if (cleaned > 0) {
+      this.options.logger.info('🧹 Cleaned up expired tokens', { cleaned, remaining: this.bearerTokens.size });
+    }
+  }
+
   async shutdown() {
     this.options.logger.info("Shutting down BotNet service");
-    // Cleanup tasks if needed
+    // Cleanup bearer tokens
+    this.bearerTokens.clear();
   }
 }
