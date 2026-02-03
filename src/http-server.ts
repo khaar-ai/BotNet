@@ -357,6 +357,82 @@ async function executeMCPMethod(
       };
     }
     
+    if (method === 'botnet.challenge.request') {
+      if (!authenticatedDomain) {
+        throw new Error('Authentication required but no domain found');
+      }
+      
+      // Generate challenge for domain ownership verification
+      const challengeId = `ch_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+      const challenge = `botnet-verify=${Math.random().toString(36).substring(2)}`;
+      
+      return {
+        jsonrpc: '2.0',
+        result: {
+          challengeId,
+          challenge,
+          verificationUrl: `https://${authenticatedDomain}/.well-known/botnet-verification`,
+          txtRecord: `_botnet.${authenticatedDomain} TXT "${challenge}"`,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+          instructions: 'Complete domain verification then call botnet.challenge.respond',
+          timestamp: new Date().toISOString()
+        },
+        id
+      };
+    }
+    
+    if (method === 'botnet.challenge.respond') {
+      const { challengeId, response } = params;
+      
+      if (!challengeId || !response) {
+        throw new Error('challengeId and response parameters are required');
+      }
+      
+      if (!authenticatedDomain) {
+        throw new Error('Authentication required but no domain found');
+      }
+      
+      // Simulate challenge verification (in real implementation, would verify DNS/HTTP)
+      const verified = response && response.includes('botnet-verify=');
+      
+      if (verified) {
+        // Generate mutual permanent passwords for federated friendship
+        const ourPassword = await tokenService.generatePermanentPassword(
+          config.botDomain,
+          authenticatedDomain,
+          'challenge_response'
+        );
+        const theirPassword = await tokenService.generatePermanentPassword(
+          authenticatedDomain,
+          config.botDomain,
+          'challenge_response'
+        );
+        
+        return {
+          jsonrpc: '2.0',
+          result: {
+            status: 'verified',
+            friendshipEstablished: true,
+            permanentPassword: ourPassword, // Our password for them to use
+            exchangedPassword: theirPassword, // Their password for us to use
+            mutualAuthentication: true,
+            timestamp: new Date().toISOString()
+          },
+          id
+        };
+      } else {
+        return {
+          jsonrpc: '2.0',
+          result: {
+            status: 'failed',
+            error: 'Challenge verification failed',
+            timestamp: new Date().toISOString()
+          },
+          id
+        };
+      }
+    }
+
     // ===== TIER 3: SESSION METHODS =====
     
     if (method === 'botnet.message.send') {
@@ -409,6 +485,66 @@ async function executeMCPMethod(
             lastSeen: f.last_seen
           })),
           count: friendships.length,
+          timestamp: new Date().toISOString()
+        },
+        id
+      };
+    }
+    
+    if (method === 'botnet.message.check') {
+      if (!authenticatedDomain) {
+        throw new Error('Authentication required but no domain found');
+      }
+      
+      const { messageIds } = params;
+      
+      if (!messageIds || !Array.isArray(messageIds)) {
+        throw new Error('messageIds array parameter required');
+      }
+      
+      // Check message status and responses via messaging service
+      const result = await botnetService.checkAgentResponses(authenticatedDomain);
+      
+      return {
+        jsonrpc: '2.0',
+        result: {
+          messages: result.responses || [],
+          count: result.responses?.length || 0,
+          fromDomain: authenticatedDomain,
+          timestamp: new Date().toISOString()
+        },
+        id
+      };
+    }
+    
+    if (method === 'botnet.gossip.exchange') {
+      if (!authenticatedDomain) {
+        throw new Error('Authentication required but no domain found');
+      }
+      
+      const { gossipData, category = 'general' } = params;
+      
+      if (!gossipData) {
+        throw new Error('gossipData parameter is required');
+      }
+      
+      // Exchange gossip via gossip service
+      const result = await botnetService.getGossipService().exchangeMessages({
+        fromDomain: authenticatedDomain,
+        toDomain: config.botDomain,
+        content: gossipData,
+        category,
+        type: 'gossip.exchange'
+      });
+      
+      return {
+        jsonrpc: '2.0',
+        result: {
+          exchangeId: result.messageId || `gossip_${Date.now()}`,
+          status: 'exchanged',
+          category,
+          fromDomain: authenticatedDomain,
+          toDomain: config.botDomain,
           timestamp: new Date().toISOString()
         },
         id
