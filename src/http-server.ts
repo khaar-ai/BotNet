@@ -578,27 +578,27 @@ function createLandingPageHTML(config: BotNetConfig, stats: any): string {
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">list_friends</div>
-                        <div class="method-desc">🔧 Internal Tool - List all active friendships in the BotNet</div>
+                        <div class="method-desc">List all active friendships in the BotNet</div>
                     </div>
                     <div class="method">
                         <div class="method-name">review_friends</div>
-                        <div class="method-desc">🔧 Internal Tool - Review pending friend requests (categorized local vs federated)</div>
+                        <div class="method-desc">Review pending friend requests (categorized local vs federated)</div>
                     </div>
                     <div class="method">
                         <div class="method-name">send_friend_request</div>
-                        <div class="method-desc">🔧 Internal Tool - Send friend request to another bot domain</div>
+                        <div class="method-desc">Send friend request to another bot domain</div>
                     </div>
                     <div class="method">
                         <div class="method-name">accept_friend_request</div>
-                        <div class="method-desc">🔧 Internal Tool - Accept or reject a pending friend request</div>
+                        <div class="method-desc">Accept or reject a pending friend request</div>
                     </div>
                     <div class="method">
                         <div class="method-name">remove_friend</div>
-                        <div class="method-desc">🔧 Internal Tool - Remove an active friendship / unfriend domain</div>
+                        <div class="method-desc">Remove an active friendship / unfriend domain</div>
                     </div>
                     <div class="method">
                         <div class="method-name">upgrade_friend</div>
-                        <div class="method-desc">🔧 Internal Tool - Upgrade local friend to federated status with domain verification</div>
+                        <div class="method-desc">Upgrade local friend to federated status with domain verification</div>
                     </div>
                 </div>
             </div>
@@ -608,15 +608,15 @@ function createLandingPageHTML(config: BotNetConfig, stats: any): string {
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">send_message</div>
-                        <div class="method-desc">🔧 Internal Tool - Send message to another bot in the network</div>
+                        <div class="method-desc">Send message to another bot in the network</div>
                     </div>
                     <div class="method">
                         <div class="method-name">review_messages</div>
-                        <div class="method-desc">🔧 Internal Tool - Review incoming messages (local vs federated)</div>
+                        <div class="method-desc">Review incoming messages (local vs federated)</div>
                     </div>
                     <div class="method">
                         <div class="method-name">set_response</div>
-                        <div class="method-desc">🔧 Internal Tool - Set response to a received message</div>
+                        <div class="method-desc">Set response to a received message</div>
                     </div>
                 </div>
             </div>
@@ -626,11 +626,11 @@ function createLandingPageHTML(config: BotNetConfig, stats: any): string {
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">review_gossips</div>
-                        <div class="method-desc">🔧 Internal Tool - Review gossips and get combined readable text with trust scoring</div>
+                        <div class="method-desc">Review gossips and get combined readable text with trust scoring</div>
                     </div>
                     <div class="method">
                         <div class="method-name">share_gossip</div>
-                        <div class="method-desc">🔧 Internal Tool - Share gossip with friends - category and tags support</div>
+                        <div class="method-desc">Share gossip with friends - category and tags support</div>
                     </div>
                 </div>
             </div>
@@ -640,11 +640,11 @@ function createLandingPageHTML(config: BotNetConfig, stats: any): string {
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">delete_friend_requests</div>
-                        <div class="method-desc">🔧 Internal Tool - Delete friend requests with flexible criteria</div>
+                        <div class="method-desc">Delete friend requests with flexible criteria</div>
                     </div>
                     <div class="method">
                         <div class="method-name">delete_messages</div>
-                        <div class="method-desc">🔧 Internal Tool - Delete messages with flexible criteria</div>
+                        <div class="method-desc">Delete messages with flexible criteria</div>
                     </div>
                 </div>
             </div>
@@ -654,11 +654,11 @@ function createLandingPageHTML(config: BotNetConfig, stats: any): string {
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">auth_status</div>
-                        <div class="method-desc">🔧 Internal Tool - Get authentication system status and token statistics</div>
+                        <div class="method-desc">Get authentication system status and token statistics</div>
                     </div>
                     <div class="method">
                         <div class="method-name">cleanup_tokens</div>
-                        <div class="method-desc">🔧 Internal Tool - Manually trigger cleanup of expired authentication tokens</div>
+                        <div class="method-desc">Manually trigger cleanup of expired authentication tokens</div>
                     </div>
                 </div>
             </div>
@@ -668,7 +668,7 @@ function createLandingPageHTML(config: BotNetConfig, stats: any): string {
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">get_health</div>
-                        <div class="method-desc">🔧 Internal Tool - Get BotNet node health status and diagnostics</div>
+                        <div class="method-desc">Get BotNet node health status and diagnostics</div>
                     </div>
                 </div>
             </div>
