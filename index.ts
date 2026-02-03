@@ -24,7 +24,7 @@ const plugin = {
   configSchema: BotNetConfigSchema,
   
   register(api: OpenClawPluginApi) {
-    console.log("🐉 BotNet plugin loading...");
+    console.log("🐉 BotNet plugin loading with MCP protocol...");
     
     let httpServer: http.Server | null = null;
     const config = BotNetConfigSchema.parse(api.pluginConfig || {});
@@ -36,7 +36,7 @@ const plugin = {
         console.log("🐉 Starting BotNet HTTP server service (in-process)...");
         
         try {
-          // Create HTTP server in-process using our server factory
+          // Create HTTP server in-process using our server factory (MCP enabled)
           httpServer = createBotNetServer({
             config,
             logger: api.logger

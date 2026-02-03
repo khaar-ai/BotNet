@@ -1,261 +1,261 @@
-import { v4 as uuidv4 } from "uuid";
-import type Database from "better-sqlite3";
-import type { BotNetConfig } from "../../index.js";
-import type { Logger } from "../logger.js";
+// BotNet Friendship Service
+// Manages bot-to-bot relationships and connections
 
 export interface Friendship {
-  id: number;
-  friend_id: string;
-  friend_name?: string;
-  status: "pending" | "active" | "rejected" | "blocked";
-  tier: string;
-  trust_score: number;
-  created_at: string;
-  updated_at: string;
-  last_seen?: string;
-  metadata?: any;
+  id: string;
+  botA: string;
+  botB: string;
+  status: 'pending' | 'active' | 'rejected' | 'blocked';
+  createdAt: string;
+  acceptedAt?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface FriendshipRequest {
+  id: string;
+  fromBot: string;
+  toBot: string;
+  message?: string;
+  createdAt: string;
+  status: 'pending' | 'accepted' | 'rejected';
 }
 
 export class FriendshipService {
-  constructor(
-    private db: Database.Database,
-    private config: BotNetConfig,
-    private logger: Logger
-  ) {}
+  private friendships: Map<string, Friendship> = new Map();
+  private pendingRequests: Map<string, FriendshipRequest> = new Map();
   
-  async listFriendships(status?: string): Promise<Friendship[]> {
-    let query = "SELECT * FROM friendships";
-    const params: any[] = [];
-    
-    if (status) {
-      query += " WHERE status = ?";
-      params.push(status);
-    }
-    
-    query += " ORDER BY created_at DESC";
-    
-    const stmt = this.db.prepare(query);
-    const friendships = stmt.all(...params) as Friendship[];
-    
-    return friendships;
+  private logger: {
+    info: (message: string, ...args: any[]) => void;
+    error: (message: string, ...args: any[]) => void;
+    warn: (message: string, ...args: any[]) => void;
+  };
+
+  constructor(logger: FriendshipService['logger']) {
+    this.logger = logger;
   }
-  
-  async getFriendshipStatus(friendId: string): Promise<any> {
-    const stmt = this.db.prepare("SELECT * FROM friendships WHERE friend_id = ?");
-    const friendship = stmt.get(friendId) as Friendship | undefined;
+
+  /**
+   * Send friendship request to another bot
+   */
+  async sendFriendshipRequest(fromBot: string, toBot: string, message?: string): Promise<FriendshipRequest> {
+    const requestId = `freq_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    if (!friendship) {
-      return {
-        exists: false,
-        friend_id: friendId
-      };
-    }
-    
-    return {
-      exists: true,
-      friend_id: friendId,
-      status: friendship.status,
-      tier: friendship.tier,
-      trust_score: friendship.trust_score,
-      created_at: friendship.created_at,
-      last_seen: friendship.last_seen
+    const request: FriendshipRequest = {
+      id: requestId,
+      fromBot,
+      toBot, 
+      message,
+      createdAt: new Date().toISOString(),
+      status: 'pending'
     };
+
+    this.pendingRequests.set(requestId, request);
+
+    this.logger.info('🐉 Friendship: Request sent', {
+      requestId,
+      fromBot,
+      toBot,
+      hasMessage: !!message
+    });
+
+    return request;
   }
-  
-  async createFriendshipRequest(request: any): Promise<any> {
-    const { target_bot_id, target_domain, message } = request;
-    
-    if (!target_bot_id || !target_domain) {
-      return {
-        success: false,
-        error: "Missing target_bot_id or target_domain"
-      };
+
+  /**
+   * Accept friendship request
+   */
+  async acceptFriendshipRequest(requestId: string): Promise<Friendship> {
+    const request = this.pendingRequests.get(requestId);
+    if (!request) {
+      throw new Error('Friendship request not found');
     }
-    
-    const friendId = `${target_bot_id}@${target_domain}`;
-    
-    try {
-      const stmt = this.db.prepare(`
-        INSERT INTO friendships (friend_id, friend_name, status, tier)
-        VALUES (?, ?, 'pending', ?)
-        ON CONFLICT(friend_id) DO UPDATE SET
-          status = CASE 
-            WHEN status = 'rejected' THEN 'pending'
-            ELSE status
-          END,
-          updated_at = CURRENT_TIMESTAMP
-      `);
-      
-      stmt.run(friendId, target_bot_id, this.config.tier);
-      
-      this.logger.info("Created friendship request", { friendId });
-      
-      return {
-        success: true,
-        friend_id: friendId,
-        status: "pending"
-      };
-    } catch (error) {
-      this.logger.error("Failed to create friendship request", error);
-      return {
-        success: false,
-        error: "Failed to create friendship request"
-      };
+
+    if (request.status !== 'pending') {
+      throw new Error('Friendship request already processed');
     }
-  }
-  
-  async handleFriendshipRequest(request: any): Promise<any> {
-    const { source_bot_id, source_domain, tier, capabilities } = request;
-    
-    if (!source_bot_id || !source_domain) {
-      return {
-        success: false,
-        error: "Missing source bot information"
-      };
-    }
-    
-    const friendId = `${source_bot_id}@${source_domain}`;
-    
-    // Check if friendship already exists
-    const existing = this.db.prepare("SELECT * FROM friendships WHERE friend_id = ?").get(friendId);
-    
-    if (existing) {
-      return {
-        success: true,
-        friend_id: friendId,
-        status: (existing as any).status,
-        message: "Friendship already exists"
-      };
-    }
-    
-    // Auto-accept based on tier compatibility
-    const shouldAutoAccept = this.shouldAutoAcceptFriendship(tier);
-    const status = shouldAutoAccept ? "active" : "pending";
-    
-    const stmt = this.db.prepare(`
-      INSERT INTO friendships (friend_id, friend_name, status, tier, metadata)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(
-      friendId,
-      source_bot_id,
-      status,
-      tier || "bootstrap",
-      JSON.stringify({ capabilities })
-    );
-    
-    this.logger.info("Handled friendship request", { friendId, status });
-    
-    return {
-      success: true,
-      friend_id: friendId,
-      status,
-      auto_accepted: shouldAutoAccept
+
+    // Create friendship
+    const friendshipId = `friend_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const friendship: Friendship = {
+      id: friendshipId,
+      botA: request.fromBot,
+      botB: request.toBot,
+      status: 'active',
+      createdAt: request.createdAt,
+      acceptedAt: new Date().toISOString(),
+      metadata: {
+        requestId,
+        requestMessage: request.message
+      }
     };
+
+    this.friendships.set(friendshipId, friendship);
+
+    // Update request status
+    request.status = 'accepted';
+    
+    this.logger.info('🐉 Friendship: Request accepted', {
+      requestId,
+      friendshipId,
+      botA: friendship.botA,
+      botB: friendship.botB
+    });
+
+    return friendship;
   }
-  
-  async acceptFriendship(request: any): Promise<any> {
-    const { friend_id } = request;
-    
-    if (!friend_id) {
-      return {
-        success: false,
-        error: "Missing friend_id"
-      };
+
+  /**
+   * Reject friendship request
+   */
+  async rejectFriendshipRequest(requestId: string): Promise<boolean> {
+    const request = this.pendingRequests.get(requestId);
+    if (!request) {
+      throw new Error('Friendship request not found');
     }
-    
-    const stmt = this.db.prepare(`
-      UPDATE friendships 
-      SET status = 'active', updated_at = CURRENT_TIMESTAMP
-      WHERE friend_id = ? AND status = 'pending'
-    `);
-    
-    const result = stmt.run(friend_id);
-    
-    if (result.changes === 0) {
-      return {
-        success: false,
-        error: "Friendship not found or already processed"
-      };
+
+    if (request.status !== 'pending') {
+      throw new Error('Friendship request already processed');
     }
+
+    request.status = 'rejected';
     
-    this.logger.info("Accepted friendship", { friend_id });
+    this.logger.info('🐉 Friendship: Request rejected', {
+      requestId,
+      fromBot: request.fromBot,
+      toBot: request.toBot
+    });
+
+    return true;
+  }
+
+  /**
+   * List friendships for a bot
+   */
+  async listFriendships(botName: string): Promise<Friendship[]> {
+    return Array.from(this.friendships.values())
+      .filter(friendship => 
+        (friendship.botA === botName || friendship.botB === botName) &&
+        friendship.status === 'active'
+      );
+  }
+
+  /**
+   * List pending friendship requests for a bot
+   */
+  async listPendingRequests(botName: string): Promise<FriendshipRequest[]> {
+    return Array.from(this.pendingRequests.values())
+      .filter(request => 
+        request.toBot === botName && 
+        request.status === 'pending'
+      );
+  }
+
+  /**
+   * Check friendship status between two bots
+   */
+  async getFriendshipStatus(botA: string, botB: string): Promise<'not_connected' | 'pending' | 'active' | 'blocked'> {
+    // Check for active friendship
+    const activeFriendship = Array.from(this.friendships.values())
+      .find(friendship => 
+        friendship.status === 'active' && (
+          (friendship.botA === botA && friendship.botB === botB) ||
+          (friendship.botA === botB && friendship.botB === botA)
+        )
+      );
+
+    if (activeFriendship) {
+      return 'active';
+    }
+
+    // Check for blocked friendship
+    const blockedFriendship = Array.from(this.friendships.values())
+      .find(friendship => 
+        friendship.status === 'blocked' && (
+          (friendship.botA === botA && friendship.botB === botB) ||
+          (friendship.botA === botB && friendship.botB === botA)
+        )
+      );
+
+    if (blockedFriendship) {
+      return 'blocked';
+    }
+
+    // Check for pending requests
+    const pendingRequest = Array.from(this.pendingRequests.values())
+      .find(request => 
+        request.status === 'pending' && (
+          (request.fromBot === botA && request.toBot === botB) ||
+          (request.fromBot === botB && request.toBot === botA)
+        )
+      );
+
+    if (pendingRequest) {
+      return 'pending';
+    }
+
+    return 'not_connected';
+  }
+
+  /**
+   * Block another bot (prevent future friendship requests)
+   */
+  async blockBot(fromBot: string, targetBot: string): Promise<boolean> {
+    const blockId = `block_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    return {
-      success: true,
-      friend_id,
-      status: "active"
+    const block: Friendship = {
+      id: blockId,
+      botA: fromBot,
+      botB: targetBot,
+      status: 'blocked',
+      createdAt: new Date().toISOString(),
+      metadata: {
+        type: 'block'
+      }
     };
+
+    this.friendships.set(blockId, block);
+
+    this.logger.info('🐉 Friendship: Bot blocked', {
+      fromBot,
+      targetBot,
+      blockId
+    });
+
+    return true;
   }
-  
-  async rejectFriendship(request: any): Promise<any> {
-    const { friend_id, reason } = request;
+
+  /**
+   * Get friendship by ID
+   */
+  async getFriendship(friendshipId: string): Promise<Friendship | null> {
+    return this.friendships.get(friendshipId) || null;
+  }
+
+  /**
+   * Get friendship request by ID
+   */
+  async getFriendshipRequest(requestId: string): Promise<FriendshipRequest | null> {
+    return this.pendingRequests.get(requestId) || null;
+  }
+
+  /**
+   * Get stats for a bot
+   */
+  async getBotStats(botName: string): Promise<{
+    friendships: number;
+    pendingRequests: number;
+    sentRequests: number;
+  }> {
+    const friendships = await this.listFriendships(botName);
+    const pendingRequests = await this.listPendingRequests(botName);
     
-    if (!friend_id) {
-      return {
-        success: false,
-        error: "Missing friend_id"
-      };
-    }
-    
-    const stmt = this.db.prepare(`
-      UPDATE friendships 
-      SET status = 'rejected', updated_at = CURRENT_TIMESTAMP,
-          metadata = json_set(COALESCE(metadata, '{}'), '$.rejection_reason', ?)
-      WHERE friend_id = ? AND status = 'pending'
-    `);
-    
-    const result = stmt.run(reason || "No reason provided", friend_id);
-    
-    if (result.changes === 0) {
-      return {
-        success: false,
-        error: "Friendship not found or already processed"
-      };
-    }
-    
-    this.logger.info("Rejected friendship", { friend_id, reason });
-    
+    const sentRequests = Array.from(this.pendingRequests.values())
+      .filter(request => request.fromBot === botName && request.status === 'pending');
+
     return {
-      success: true,
-      friend_id,
-      status: "rejected"
+      friendships: friendships.length,
+      pendingRequests: pendingRequests.length,
+      sentRequests: sentRequests.length
     };
-  }
-  
-  async updateTrustScore(friendId: string, delta: number) {
-    const stmt = this.db.prepare(`
-      UPDATE friendships 
-      SET trust_score = MAX(0, MIN(100, trust_score + ?)),
-          updated_at = CURRENT_TIMESTAMP
-      WHERE friend_id = ?
-    `);
-    
-    stmt.run(delta, friendId);
-  }
-  
-  async updateLastSeen(friendId: string) {
-    const stmt = this.db.prepare(`
-      UPDATE friendships 
-      SET last_seen = CURRENT_TIMESTAMP
-      WHERE friend_id = ?
-    `);
-    
-    stmt.run(friendId);
-  }
-  
-  private shouldAutoAcceptFriendship(tier?: string): boolean {
-    // Auto-accept logic based on tier
-    const myTier = this.config.tier;
-    const theirTier = tier || "bootstrap";
-    
-    // Define tier hierarchy
-    const tierHierarchy = ["bootstrap", "standard", "pro", "enterprise"];
-    const myTierIndex = tierHierarchy.indexOf(myTier);
-    const theirTierIndex = tierHierarchy.indexOf(theirTier);
-    
-    // Auto-accept if they're same tier or higher
-    return theirTierIndex >= myTierIndex;
   }
 }

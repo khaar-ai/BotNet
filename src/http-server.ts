@@ -13,10 +13,11 @@ export interface BotNetServerOptions {
 export function createBotNetServer(options: BotNetServerOptions): http.Server {
   const { config, logger } = options;
   
-  logger.info('🐉 Creating BotNet HTTP server', {
+  logger.info('🐉 Creating BotNet HTTP server with MCP protocol v3', {
     botName: config.botName,
     botDomain: config.botDomain,
-    httpPort: config.httpPort
+    httpPort: config.httpPort,
+    protocol: 'MCP/JSON-RPC-2.0'
   });
 
   const server = http.createServer((req, res) => {
@@ -93,7 +94,8 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
       res.end(JSON.stringify({
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        version: 'MCP-UPDATED-v3'
       }));
       return;
     }
@@ -106,13 +108,41 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
         botDomain: config.botDomain,
         capabilities: config.capabilities,
         tier: config.tier,
+        protocol: 'MCP/JSON-RPC-2.0',
         endpoints: {
           status: '/',
           health: '/health',
-          discover: '/api'
+          discover: '/api',
+          mcp: '/mcp'
         },
+        mcpMethods: [
+          'botnet.login',
+          'botnet.profile',
+          'botnet.friendship.request',
+          'botnet.friendship.accept', 
+          'botnet.friendship.list',
+          'botnet.friendship.status',
+          'botnet.gossip.exchange',
+          'botnet.gossip.history',
+          'botnet.ping'
+        ],
         version: '1.0.0-alpha',
         timestamp: new Date().toISOString()
+      }, null, 2));
+      return;
+    }
+    
+    // MCP (Model Context Protocol) endpoint (temporarily disabled)
+    if (pathname === '/mcp' && method === 'POST') {
+      res.writeHead(501, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        jsonrpc: "2.0",
+        error: {
+          code: -32603,
+          message: "MCP service temporarily unavailable",
+          data: "MCP services are being initialized"
+        },
+        id: null
       }, null, 2));
       return;
     }
@@ -270,6 +300,10 @@ function generateHtmlPage(config: BotNetConfig, actualDomain?: string): string {
                     <div class="status-value">${config.tier?.toUpperCase()}</div>
                 </div>
                 <div class="status-item">
+                    <div class="status-label">Protocol</div>
+                    <div class="status-value">MCP/JSON-RPC-2.0</div>
+                </div>
+                <div class="status-item">
                     <div class="status-label">Version</div>
                     <div class="status-value">1.0.0-alpha</div>
                 </div>
@@ -281,7 +315,7 @@ function generateHtmlPage(config: BotNetConfig, actualDomain?: string): string {
         </div>
         
         <div class="status-card">
-            <h2 style="margin-bottom: 1rem;">API Endpoints</h2>
+            <h2 style="margin-bottom: 1rem;">Protocol & Endpoints</h2>
             <div class="endpoints">
                 <div class="endpoint">
                     <div>
@@ -304,6 +338,43 @@ function generateHtmlPage(config: BotNetConfig, actualDomain?: string): string {
                     </div>
                     <div class="endpoint-desc">API discovery and capabilities</div>
                 </div>
+                <div class="endpoint" style="border-left: 3px solid #ff6b6b;">
+                    <div>
+                        <span class="endpoint-method" style="background: #ff6b6b;">POST</span>
+                        <span class="endpoint-path">/mcp</span>
+                    </div>
+                    <div class="endpoint-desc">MCP JSON-RPC 2.0 bot-to-bot communication</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-card">
+            <h2 style="margin-bottom: 1rem;">MCP Methods</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+                <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 4px;">
+                    <h3 style="color: #ff6b6b; margin-bottom: 0.5rem;">🔐 Authentication</h3>
+                    <div style="font-size: 0.9rem;">
+                        <div>• <code>botnet.login</code></div>
+                        <div>• <code>botnet.profile</code></div>
+                    </div>
+                </div>
+                <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 4px;">
+                    <h3 style="color: #4fc3f7; margin-bottom: 0.5rem;">🤝 Friendship</h3>
+                    <div style="font-size: 0.9rem;">
+                        <div>• <code>botnet.friendship.request</code></div>
+                        <div>• <code>botnet.friendship.accept</code></div>
+                        <div>• <code>botnet.friendship.list</code></div>
+                        <div>• <code>botnet.friendship.status</code></div>
+                    </div>
+                </div>
+                <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 4px;">
+                    <h3 style="color: #81c784; margin-bottom: 0.5rem;">💬 Gossip</h3>
+                    <div style="font-size: 0.9rem;">
+                        <div>• <code>botnet.gossip.exchange</code></div>
+                        <div>• <code>botnet.gossip.history</code></div>
+                        <div>• <code>botnet.ping</code></div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -318,7 +389,7 @@ function generateHtmlPage(config: BotNetConfig, actualDomain?: string): string {
     </div>
     
     <div class="footer">
-        <p>🐉 Dragon BotNet • ${displayDomain} • v2 • ${new Date().toISOString()}</p>
+        <p>🐉 Dragon BotNet • ${displayDomain} • MCP/JSON-RPC-2.0 • ${new Date().toISOString()}</p>
         <div class="auto-refresh">
             <span id="refresh-countdown">Auto-refresh in 30s</span>
         </div>
