@@ -230,14 +230,15 @@ async function executeMCPMethod(
   try {
     // ===== TIER 1: PUBLIC METHODS =====
     
-    if (method === 'botnet.ping') {
+    if (method === 'botnet.health') {
       return {
         jsonrpc: '2.0',
         result: {
-          status: 'pong',
+          status: 'healthy',
           node: config.botName,
           domain: config.botDomain,
           timestamp: new Date().toISOString(),
+          uptime: process.uptime(),
           capabilities: config.capabilities,
           protocol: 'MCP/1.0 + Three-Tier-Auth',
           version: '1.0.0-beta',
@@ -383,6 +384,31 @@ async function executeMCPMethod(
           status: 'sent',
           fromDomain: authenticatedDomain,
           toDomain: config.botDomain,
+          timestamp: new Date().toISOString()
+        },
+        id
+      };
+    }
+    
+    if (method === 'botnet.friendship.list') {
+      if (!authenticatedDomain) {
+        throw new Error('Authentication required but no domain found');
+      }
+      
+      const friendships = await botnetService.getFriendshipService().listFriendships();
+      
+      return {
+        jsonrpc: '2.0',
+        result: {
+          friendships: friendships.map((f: any) => ({
+            domain: f.friend_domain,
+            status: f.status,
+            tier: f.tier,
+            trustScore: f.trust_score,
+            createdAt: f.created_at,
+            lastSeen: f.last_seen
+          })),
+          count: friendships.length,
           timestamp: new Date().toISOString()
         },
         id

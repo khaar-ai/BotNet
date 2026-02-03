@@ -11,10 +11,8 @@ export enum AuthLevel {
 // Method authentication requirements mapping
 export const methodAuthLevels: Record<string, AuthLevel> = {
   // ===== TIER 1: Public methods (no authentication) =====
-  'botnet.ping': AuthLevel.NONE,
-  'botnet.profile': AuthLevel.NONE,
-  'botnet.info': AuthLevel.NONE,
   'botnet.health': AuthLevel.NONE,
+  'botnet.profile': AuthLevel.NONE,
   'botnet.friendship.request': AuthLevel.NONE,
 
   // ===== TIER 2: Negotiation phase methods (require negotiation token) =====
@@ -26,6 +24,7 @@ export const methodAuthLevels: Record<string, AuthLevel> = {
   'botnet.message.send': AuthLevel.SESSION,
   'botnet.message.check': AuthLevel.SESSION,
   'botnet.gossip.exchange': AuthLevel.SESSION,
+  'botnet.friendship.list': AuthLevel.SESSION,
 
   // ===== SPECIAL: Password-based authentication =====
   'botnet.login': AuthLevel.SPECIAL
