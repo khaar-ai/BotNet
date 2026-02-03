@@ -43,6 +43,11 @@ export class FriendshipService {
   private pendingRequests: Map<string, FriendshipRequest> = new Map();
   private rateLimiter: RateLimiter;
 
+  // Database limits to prevent overfilling
+  private readonly MAX_ACTIVE_FRIENDSHIPS = 100;
+  private readonly MAX_PENDING_REQUESTS = 50;
+  private readonly CLEANUP_OLD_REQUESTS_DAYS = 30;
+
   constructor(database: Database.Database, config: BotNetConfig, logger: FriendshipService['logger'], mcpClient: MCPClient) {
     this.database = database;
     this.config = config;
@@ -76,6 +81,58 @@ export class FriendshipService {
   }
 
   /**
+   * Check and enforce friendship limits
+   */
+  private checkFriendshipLimits(): void {
+    // Check active friendships limit
+    const activeCount = this.database.prepare(`
+      SELECT COUNT(*) as count FROM friendships WHERE status = 'active'
+    `).get() as { count: number };
+    
+    if (activeCount.count >= this.MAX_ACTIVE_FRIENDSHIPS) {
+      throw new Error(`Maximum active friendships limit reached (${this.MAX_ACTIVE_FRIENDSHIPS}). Please remove some friends before adding new ones.`);
+    }
+
+    // Check pending requests limit
+    const pendingCount = this.database.prepare(`
+      SELECT COUNT(*) as count FROM friendships WHERE status = 'pending'
+    `).get() as { count: number };
+    
+    if (pendingCount.count >= this.MAX_PENDING_REQUESTS) {
+      throw new Error(`Maximum pending friend requests limit reached (${this.MAX_PENDING_REQUESTS}). Please clean up old requests.`);
+    }
+  }
+
+  /**
+   * Cleanup old friend requests and rejected friendships
+   */
+  private cleanupOldData(): void {
+    // Delete old rejected friendships (older than cleanup days)
+    const deleteOldRejected = this.database.prepare(`
+      DELETE FROM friendships 
+      WHERE status IN ('rejected', 'blocked') 
+      AND updated_at < datetime('now', '-' || ? || ' days')
+    `);
+    const rejectedDeleted = deleteOldRejected.run(this.CLEANUP_OLD_REQUESTS_DAYS);
+
+    // Delete very old pending requests (older than cleanup days)
+    const deleteOldPending = this.database.prepare(`
+      DELETE FROM friendships 
+      WHERE status = 'pending' 
+      AND created_at < datetime('now', '-' || ? || ' days')
+    `);
+    const pendingDeleted = deleteOldPending.run(this.CLEANUP_OLD_REQUESTS_DAYS);
+
+    if (rejectedDeleted.changes || pendingDeleted.changes) {
+      this.logger.info('🧹 Friendship cleanup completed', {
+        rejectedDeleted: rejectedDeleted.changes,
+        pendingDeleted: pendingDeleted.changes,
+        cleanupDays: this.CLEANUP_OLD_REQUESTS_DAYS
+      });
+    }
+  }
+
+  /**
    * List active friends (with rate limiting)
    */
   async listFriends(clientIP?: string): Promise<Friendship[]> {
@@ -105,6 +162,10 @@ export class FriendshipService {
    * Create a pending friendship request (sent to another domain)
    */
   async sendFriendshipRequest(fromDomain: string, toDomain: string, message?: string): Promise<FriendshipRequest> {
+    // Cleanup old data and check limits before creating new requests
+    this.cleanupOldData();
+    this.checkFriendshipLimits();
+
     // Validate target domain for federation
     const targetType = this.determineRequestType(toDomain);
     if (targetType === 'invalid') {
@@ -728,6 +789,10 @@ export class FriendshipService {
     if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'createFriendRequest')) {
       throw new Error('Rate limit exceeded. Please try again later.');
     }
+
+    // Cleanup old data and check limits before creating new requests
+    this.cleanupOldData();
+    this.checkFriendshipLimits();
 
     // Check if friendship already exists
     const existing = this.database.prepare(`

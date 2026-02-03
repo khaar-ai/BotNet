@@ -21,12 +21,94 @@ export interface GossipMessage {
 export class GossipService {
   private rateLimiter: RateLimiter;
 
+  // Database limits to prevent overfilling
+  private readonly MAX_GOSSIP_MESSAGES = 500;
+  private readonly MAX_ANONYMOUS_GOSSIP = 200;
+  private readonly CLEANUP_GOSSIP_DAYS = 7;
+  private readonly CLEANUP_ANONYMOUS_DAYS = 7;
+
   constructor(
     private db: Database.Database,
     private config: BotNetConfig,
     private logger: Logger
   ) {
     this.rateLimiter = new RateLimiter(logger, 60 * 1000, 10); // 10 gossips per minute
+  }
+
+  /**
+   * Check and enforce gossip limits
+   */
+  private checkGossipLimits(): void {
+    // Check gossip messages limit
+    const gossipCount = this.db.prepare(`
+      SELECT COUNT(*) as count FROM gossip_messages
+    `).get() as { count: number };
+    
+    if (gossipCount.count >= this.MAX_GOSSIP_MESSAGES) {
+      // Auto-cleanup oldest gossips if at limit
+      const deleteOldest = this.db.prepare(`
+        DELETE FROM gossip_messages 
+        WHERE id IN (
+          SELECT id FROM gossip_messages 
+          ORDER BY created_at ASC 
+          LIMIT 50
+        )
+      `);
+      const deleted = deleteOldest.run();
+      this.logger.info('🧹 Auto-cleaned oldest gossips due to limit', {
+        deleted: deleted.changes,
+        limit: this.MAX_GOSSIP_MESSAGES
+      });
+    }
+
+    // Check anonymous gossip limit
+    const anonCount = this.db.prepare(`
+      SELECT COUNT(*) as count FROM anonymous_gossip
+    `).get() as { count: number };
+    
+    if (anonCount.count >= this.MAX_ANONYMOUS_GOSSIP) {
+      // Auto-cleanup oldest anonymous gossips if at limit
+      const deleteOldestAnon = this.db.prepare(`
+        DELETE FROM anonymous_gossip 
+        WHERE id IN (
+          SELECT id FROM anonymous_gossip 
+          ORDER BY created_at ASC 
+          LIMIT 25
+        )
+      `);
+      const deletedAnon = deleteOldestAnon.run();
+      this.logger.info('🧹 Auto-cleaned oldest anonymous gossips due to limit', {
+        deleted: deletedAnon.changes,
+        limit: this.MAX_ANONYMOUS_GOSSIP
+      });
+    }
+  }
+
+  /**
+   * Cleanup old gossip messages
+   */
+  private cleanupOldData(): void {
+    // Delete old gossip messages (older than cleanup days)
+    const deleteOldGossip = this.db.prepare(`
+      DELETE FROM gossip_messages 
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+    `);
+    const gossipDeleted = deleteOldGossip.run(this.CLEANUP_GOSSIP_DAYS);
+
+    // Delete old anonymous gossip (older than cleanup days)
+    const deleteOldAnon = this.db.prepare(`
+      DELETE FROM anonymous_gossip 
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+    `);
+    const anonDeleted = deleteOldAnon.run(this.CLEANUP_ANONYMOUS_DAYS);
+
+    if (gossipDeleted.changes || anonDeleted.changes) {
+      this.logger.info('🧹 Gossip cleanup completed', {
+        gossipDeleted: gossipDeleted.changes,
+        anonDeleted: anonDeleted.changes,
+        cleanupDays: this.CLEANUP_GOSSIP_DAYS
+      });
+    }
   }
   
   async handleExchange(request: any): Promise<any> {
@@ -187,6 +269,10 @@ export class GossipService {
         error: "Content is required"
       };
     }
+
+    // Cleanup old data and check limits before creating new anonymous gossip
+    this.cleanupOldData();
+    this.checkGossipLimits();
     
     const messageId = this.generateAnonymousId(content);
     
@@ -263,6 +349,10 @@ export class GossipService {
   }
   
   async createMessage(content: string, category?: string): Promise<string> {
+    // Cleanup old data and check limits before creating new gossip message
+    this.cleanupOldData();
+    this.checkGossipLimits();
+
     const messageId = uuidv4();
     const sourceId = this.getGossipSourceId();
     
@@ -369,6 +459,10 @@ export class GossipService {
     if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'shareGossip')) {
       throw new Error('Rate limit exceeded for sharing gossip. Please try again later.');
     }
+
+    // Cleanup old data and check limits before creating new gossip
+    this.cleanupOldData();
+    this.checkGossipLimits();
 
     // Create gossip message
     const messageId = await this.createMessage(content, category);

@@ -30,6 +30,12 @@ export interface MessageResponse {
 export class MessagingService {
   private rateLimiter: RateLimiter;
 
+  // Database limits to prevent overfilling
+  private readonly MAX_STORED_MESSAGES = 1000;
+  private readonly MAX_MESSAGE_RESPONSES = 500;
+  private readonly CLEANUP_MESSAGES_DAYS = 30;
+  private readonly CLEANUP_RESPONSES_DAYS = 30;
+
   constructor(
     private database: Database.Database,
     private config: BotNetConfig,
@@ -40,6 +46,82 @@ export class MessagingService {
     }
   ) {
     this.rateLimiter = new RateLimiter(logger, 60 * 1000, 10); // 10 messages per minute
+  }
+
+  /**
+   * Check and enforce messaging limits
+   */
+  private checkMessagingLimits(): void {
+    // Check total messages limit
+    const messageCount = this.database.prepare(`
+      SELECT COUNT(*) as count FROM messages
+    `).get() as { count: number };
+    
+    if (messageCount.count >= this.MAX_STORED_MESSAGES) {
+      // Auto-cleanup oldest messages if at limit
+      const deleteOldest = this.database.prepare(`
+        DELETE FROM messages 
+        WHERE id IN (
+          SELECT id FROM messages 
+          ORDER BY created_at ASC 
+          LIMIT 100
+        )
+      `);
+      const deleted = deleteOldest.run();
+      this.logger.info('🧹 Auto-cleaned oldest messages due to limit', {
+        deleted: deleted.changes,
+        limit: this.MAX_STORED_MESSAGES
+      });
+    }
+
+    // Check message responses limit
+    const responseCount = this.database.prepare(`
+      SELECT COUNT(*) as count FROM message_responses
+    `).get() as { count: number };
+    
+    if (responseCount.count >= this.MAX_MESSAGE_RESPONSES) {
+      // Auto-cleanup oldest responses if at limit
+      const deleteOldestResponses = this.database.prepare(`
+        DELETE FROM message_responses 
+        WHERE id IN (
+          SELECT id FROM message_responses 
+          ORDER BY created_at ASC 
+          LIMIT 50
+        )
+      `);
+      const deletedResponses = deleteOldestResponses.run();
+      this.logger.info('🧹 Auto-cleaned oldest message responses due to limit', {
+        deleted: deletedResponses.changes,
+        limit: this.MAX_MESSAGE_RESPONSES
+      });
+    }
+  }
+
+  /**
+   * Cleanup old messages and responses
+   */
+  private cleanupOldData(): void {
+    // Delete old messages (older than cleanup days)
+    const deleteOldMessages = this.database.prepare(`
+      DELETE FROM messages 
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+    `);
+    const messagesDeleted = deleteOldMessages.run(this.CLEANUP_MESSAGES_DAYS);
+
+    // Delete old message responses (older than cleanup days)
+    const deleteOldResponses = this.database.prepare(`
+      DELETE FROM message_responses 
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+    `);
+    const responsesDeleted = deleteOldResponses.run(this.CLEANUP_RESPONSES_DAYS);
+
+    if (messagesDeleted.changes || responsesDeleted.changes) {
+      this.logger.info('🧹 Messaging cleanup completed', {
+        messagesDeleted: messagesDeleted.changes,
+        responsesDeleted: responsesDeleted.changes,
+        cleanupDays: this.CLEANUP_MESSAGES_DAYS
+      });
+    }
   }
 
   /**
@@ -72,6 +154,10 @@ export class MessagingService {
     if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'sendMessage')) {
       throw new Error('Rate limit exceeded for message sending. Please try again later.');
     }
+
+    // Cleanup old data and check limits before creating new messages
+    this.cleanupOldData();
+    this.checkMessagingLimits();
 
     // Validate target domain
     const toNodeType = this.determineNodeType(toDomain);
