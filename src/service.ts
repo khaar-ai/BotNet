@@ -80,7 +80,7 @@ export class BotNetService {
     // Route MCP requests based on type
     switch (request.type) {
       case "friendship.request":
-        return await this.friendshipService.createIncomingFriendRequest(request.fromDomain, request.message);
+        return await this.friendshipService.createIncomingFriendRequest(request.fromDomain, request.message, request.clientIP);
       
       case "friendship.accept":
         return await this.friendshipService.acceptFriendshipRequest(request.fromDomain, request.toDomain);
@@ -184,10 +184,12 @@ export class BotNetService {
   }
   
   /**
-   * Get pending friend requests for this domain
+   * Get pending friend requests for this domain (legacy method)
    */
   async getPendingFriendRequests(domainName: string): Promise<any[]> {
-    return await this.friendshipService.listPendingRequests();
+    const categorized = await this.friendshipService.listPendingRequests();
+    // Return combined array for backward compatibility
+    return [...categorized.local, ...categorized.federated];
   }
   
   /**
@@ -216,6 +218,27 @@ export class BotNetService {
    */
   async getFriends(domainName: string): Promise<any[]> {
     return await this.friendshipService.listFriendships();
+  }
+
+  /**
+   * Get enhanced pending requests with categorization
+   */
+  async getEnhancedPendingRequests(): Promise<any> {
+    return await this.friendshipService.listPendingRequests();
+  }
+
+  /**
+   * Initiate domain challenge for federated request
+   */
+  async challengeDomain(requestId: string): Promise<any> {
+    return await this.friendshipService.initiateDomainChallenge(requestId);
+  }
+
+  /**
+   * Verify domain challenge response
+   */
+  async verifyChallenge(challengeId: string, response: string): Promise<any> {
+    return await this.friendshipService.verifyDomainChallenge(challengeId, response);
   }
 
   async shutdown() {

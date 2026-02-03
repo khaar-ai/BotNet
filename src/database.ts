@@ -141,6 +141,43 @@ async function runMigrations(db: Database.Database, logger: Logger): Promise<voi
         CREATE INDEX IF NOT EXISTS idx_friendships_tier ON friendships(tier);
       `
     },
+    {
+      filename: "003_enhanced_friendship_metadata.sql",
+      sql: `
+        -- Add support for enhanced friendship metadata (bearer tokens, challenges, rate limiting)
+        
+        -- Create rate limiting table  
+        CREATE TABLE IF NOT EXISTS rate_limits (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          identifier TEXT NOT NULL UNIQUE, -- IP or domain
+          request_count INTEGER DEFAULT 0,
+          reset_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Create challenge tracking table
+        CREATE TABLE IF NOT EXISTS domain_challenges (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          friendship_id INTEGER,
+          challenge_id TEXT NOT NULL UNIQUE,
+          challenge_token TEXT NOT NULL,
+          from_domain TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending', -- pending, verified, failed, expired
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          verified_at TIMESTAMP,
+          expires_at TIMESTAMP,
+          FOREIGN KEY (friendship_id) REFERENCES friendships(id)
+        );
+        
+        -- Create indexes
+        CREATE INDEX IF NOT EXISTS idx_rate_limits_identifier ON rate_limits(identifier);
+        CREATE INDEX IF NOT EXISTS idx_rate_limits_reset_at ON rate_limits(reset_at);
+        CREATE INDEX IF NOT EXISTS idx_challenges_challenge_id ON domain_challenges(challenge_id);
+        CREATE INDEX IF NOT EXISTS idx_challenges_status ON domain_challenges(status);
+        CREATE INDEX IF NOT EXISTS idx_challenges_from_domain ON domain_challenges(from_domain);
+        CREATE INDEX IF NOT EXISTS idx_challenges_expires_at ON domain_challenges(expires_at);
+      `
+    },
   ];
   
   // Apply migrations

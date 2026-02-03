@@ -220,19 +220,34 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                 }
               }
               
-              // Review friend requests
+              // Review friend requests (enhanced with categorization)
               if (request.method === 'botnet.reviewFriendRequests') {
                 try {
-                  const pendingRequests = await botnetService.getPendingFriendRequests(config.botName);
+                  const categorizedRequests = await botnetService.getEnhancedPendingRequests();
                   
                   const response = {
                     jsonrpc: '2.0',
                     result: {
-                      requests: pendingRequests.map(req => ({
-                        from: req.fromBot,
+                      summary: categorizedRequests.summary,
+                      local: categorizedRequests.local.map((req: any) => ({
+                        id: req.id,
+                        from: req.fromDomain,
                         message: req.message,
                         timestamp: req.createdAt,
-                        requestId: req.id
+                        type: 'local',
+                        bearerToken: req.bearerToken?.substring(0, 12) + '...', // Partial token for reference
+                        status: req.status
+                      })),
+                      federated: categorizedRequests.federated.map((req: any) => ({
+                        id: req.id,
+                        from: req.fromDomain,
+                        message: req.message,
+                        timestamp: req.createdAt,
+                        type: 'federated',
+                        bearerToken: req.bearerToken?.substring(0, 12) + '...', // Partial token for reference
+                        status: req.status,
+                        challengeAttempts: req.challengeAttempts,
+                        lastChallengeAt: req.lastChallengeAt
                       }))
                     },
                     id: request.id
@@ -324,6 +339,84 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                     error: {
                       code: -32603,
                       message: error instanceof Error ? error.message : 'Failed to list friends'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Challenge domain for federated friend request
+              if (request.method === 'botnet.challengeDomain') {
+                try {
+                  const { requestId } = request.params || {};
+                  if (!requestId) {
+                    throw new Error('requestId parameter required');
+                  }
+                  
+                  const result = await botnetService.challengeDomain(requestId);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      status: 'challenge_initiated',
+                      challengeId: result.challengeId,
+                      message: 'Domain challenge sent - awaiting verification'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to initiate domain challenge'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Verify domain challenge response
+              if (request.method === 'botnet.verifyChallenge') {
+                try {
+                  const { challengeId, response: challengeResponse } = request.params || {};
+                  if (!challengeId || !challengeResponse) {
+                    throw new Error('challengeId and response parameters required');
+                  }
+                  
+                  const result = await botnetService.verifyChallenge(challengeId, challengeResponse);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      verified: result.verified,
+                      status: result.verified ? 'friendship_established' : 'verification_failed',
+                      friendshipId: result.friendshipId
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to verify challenge'
                     },
                     id: request.id
                   };
