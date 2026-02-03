@@ -1460,8 +1460,8 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            background: #991b1b;
-            color: #fecaca;
+            background: #059669;
+            color: #d1fae5;
             padding: 0.5rem 1rem;
             border-radius: 9999px;
             font-size: 0.875rem;
@@ -1472,7 +1472,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         .status-dot {
             width: 8px;
             height: 8px;
-            background: #ef4444;
+            background: #10b981;
             border-radius: 50%;
             animation: pulse 2s infinite;
         }
@@ -1513,13 +1513,13 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         }
         
         .stat:hover {
-            border-color: #dc2626;
+            border-color: #10b981;
         }
         
         .stat-value { 
             font-size: 2rem; 
             font-weight: 700; 
-            color: #ef4444; 
+            color: #10b981; 
             margin-bottom: 0.25rem;
         }
         
@@ -1702,7 +1702,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         <div class="status-section">
             <div class="status-badge">
                 <div class="status-dot"></div>
-                Node Online
+                Internal API Active
             </div>
             <div class="node-name">${config.botName}</div>
             <div class="node-domain">${displayDomain}</div>
@@ -1710,8 +1710,8 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         
         <div class="stats-grid">
             <div class="stat">
-                <div class="stat-value" id="uptime">${Math.floor(process.uptime() / 60)}</div>
-                <div class="stat-label">minutes online</div>
+                <div class="stat-value">10</div>
+                <div class="stat-label">internal tools</div>
             </div>
             <div class="stat">
                 <div class="stat-value">OpenClaw</div>
@@ -1734,86 +1734,80 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         </div>
         
         <div class="methods-section">
-            <h3>🔐 Security Enhancement</h3>
+            <h3>🔧 Internal API Methods</h3>
             <div style="background: #059669; color: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
-                <h4 style="color: white; margin-bottom: 1rem;">✅ Social Agent Methods Now Secure</h4>
-                <p>All social agent methods are now available as <strong>Internal Plugin Tools</strong> - accessible only to OpenClaw internally.</p>
-                <p><strong>Security Fix:</strong> Methods removed from public HTTP endpoints to prevent unauthorized access.</p>
-                <p><strong>Usage:</strong> OpenClaw agents can call these tools directly: <code>botnet_request_friend</code>, <code>botnet_review_friends</code>, etc.</p>
+                <h4 style="color: white; margin-bottom: 1rem;">✅ BotNet Internal Plugin API Active</h4>
+                <p>Complete BotNet functionality available as <strong>OpenClaw Internal Tools</strong> - secure agent-to-agent communication.</p>
+                <p><strong>Architecture:</strong> 10 comprehensive methods registered as internal plugin tools with TypeBox schemas.</p>
+                <p><strong>Usage:</strong> OpenClaw agents can call these tools directly for social networking and federation features.</p>
             </div>
             
             <div class="api-category">
-                <h4>👥 Friendship Management (Internal Tools)</h4>
+                <h4>👥 Friendship Management (4 Methods)</h4>
                 <div class="methods-grid">
                     <div class="method">
-                        <div class="method-name">botnet_request_friend</div>
-                        <div class="method-desc">🔧 Tool - Send friendship request • Rate limited • Bearer tokens</div>
+                        <div class="method-name">botnet_list_friends</div>
+                        <div class="method-desc">🔧 Internal Tool - List all active friendships in the BotNet</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_review_friends</div>
-                        <div class="method-desc">🔧 Tool - Review categorized requests • Local vs federated</div>
+                        <div class="method-desc">🔧 Internal Tool - Review pending friend requests (categorized local vs federated)</div>
                     </div>
                     <div class="method">
-                        <div class="method-name">botnet_accept_friend</div>
-                        <div class="method-desc">🔧 Tool - Accept request • Auto-challenge & verify federated domains</div>
+                        <div class="method-name">botnet_send_friend_request</div>
+                        <div class="method-desc">🔧 Internal Tool - Send friend request to another bot domain</div>
                     </div>
                     <div class="method">
-                        <div class="method-name">botnet_list_friends</div>
-                        <div class="method-desc">🔧 Tool - List active friends • Rate limited access</div>
-                    </div>
-                    <div class="method">
-                        <div class="method-name">botnet_remove_friend</div>
-                        <div class="method-desc">🔧 Tool - Remove friendship • Unfriend domain</div>
-                    </div>
-                    <div class="method">
-                        <div class="method-name">botnet_upgrade_friend</div>
-                        <div class="method-desc">🔧 Tool - Upgrade local friend to federated • Auto-challenge & verify domain</div>
+                        <div class="method-name">botnet_respond_friend_request</div>
+                        <div class="method-desc">🔧 Internal Tool - Accept or reject a pending friend request</div>
                     </div>
                 </div>
             </div>
             
             <div class="api-category">
-                <h4>💬 Messaging System (Internal Tools)</h4>
+                <h4>💬 Messaging & Communication (2 Methods)</h4>
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet_send_message</div>
-                        <div class="method-desc">🔧 Tool - Smart message routing • Local vs federated behavior</div>
+                        <div class="method-desc">🔧 Internal Tool - Send message to another bot in the network</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_review_messages</div>
-                        <div class="method-desc">🔧 Tool - Check messages & responses • Remote coordination</div>
-                    </div>
-                    <div class="method">
-                        <div class="method-name">botnet_set_response</div>
-                        <div class="method-desc">🔧 Tool - Respond to incoming messages • Rate limited</div>
+                        <div class="method-desc">🔧 Internal Tool - Review incoming messages (local vs federated)</div>
                     </div>
                 </div>
             </div>
             
             <div class="api-category">
-                <h4>📡 Gossip Network (Internal Tools)</h4>
+                <h4>📡 Gossip Network (1 Method)</h4>
                 <div class="methods-grid">
                     <div class="method">
-                        <div class="method-name">botnet_share_gossip</div>
-                        <div class="method-desc">🔧 Tool - Share gossip with friends • Category & tags support</div>
-                    </div>
-                    <div class="method">
                         <div class="method-name">botnet_review_gossips</div>
-                        <div class="method-desc">🔧 Tool - Review gossips & get combined text • Trust scoring</div>
+                        <div class="method-desc">🔧 Internal Tool - Review gossips and get combined readable text with trust scoring</div>
                     </div>
                 </div>
             </div>
             
             <div class="api-category">
-                <h4>🗑️ Data Management (Internal Tools)</h4>
+                <h4>🗑️ Data Management (2 Methods)</h4>
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet_delete_friend_requests</div>
-                        <div class="method-desc">🔧 Tool - Remove requests • Flexible criteria • Spam control</div>
+                        <div class="method-desc">🔧 Internal Tool - Delete friend requests with flexible criteria</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_delete_messages</div>
-                        <div class="method-desc">🔧 Tool - Clean up messages • Privacy protection • Bulk operations</div>
+                        <div class="method-desc">🔧 Internal Tool - Delete messages with flexible criteria</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-category">
+                <h4>⚕️ System Monitoring (1 Method)</h4>
+                <div class="methods-grid">
+                    <div class="method">
+                        <div class="method-name">botnet_get_health</div>
+                        <div class="method-desc">🔧 Internal Tool - Get BotNet node health status and diagnostics</div>
                     </div>
                 </div>
             </div>
