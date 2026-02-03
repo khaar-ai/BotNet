@@ -22,18 +22,33 @@ const plugin = {
   configSchema: BotNetConfigSchema,
   
   register(api: OpenClawPluginApi) {
-    // Simple registration for now - just log that we're loaded
-    console.log("BotNet plugin loaded");
+    console.log("🐉 BotNet plugin loading...");
     
-    // TODO: Implement actual BotNet functionality
-    // - Database initialization
-    // - Service setup
-    // - HTTP handlers
-    // - Bot discovery and communication
+    // Auto-start the HTTP server when plugin loads
+    import('child_process').then(({ spawn }) => {
+      import('path').then((path) => {
+        const serverPath = path.join(__dirname, 'server.cjs');
+        console.log("🐉 Starting BotNet HTTP server...");
+        
+        try {
+          const serverProcess = spawn('node', [serverPath], {
+            detached: true,
+            stdio: 'ignore'
+          });
+          
+          serverProcess.unref(); // Allow parent to exit
+          console.log(`🐉 BotNet server started (PID: ${serverProcess.pid})`);
+        } catch (error) {
+          console.error("🐉 Failed to start BotNet server:", error);
+        }
+      });
+    });
+    
+    console.log("🐉 BotNet plugin loaded successfully");
     
     return {
       shutdown: async () => {
-        console.log("BotNet plugin shutting down");
+        console.log("🐉 BotNet plugin shutting down");
       }
     };
   },
