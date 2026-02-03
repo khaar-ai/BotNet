@@ -1741,27 +1741,27 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet_list_friends</div>
-                        <div class="method-desc">🔧 Internal Tool - List all active friendships in the BotNet</div>
+                        <div class="method-desc">List all active friendships in the BotNet</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_review_friends</div>
-                        <div class="method-desc">🔧 Internal Tool - Review pending friend requests (categorized local vs federated)</div>
+                        <div class="method-desc">Review pending friend requests (categorized local vs federated)</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_send_friend_request</div>
-                        <div class="method-desc">🔧 Internal Tool - Send friend request to another bot domain</div>
+                        <div class="method-desc">Send friend request to another bot domain</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_respond_friend_request</div>
-                        <div class="method-desc">🔧 Internal Tool - Accept or reject a pending friend request</div>
+                        <div class="method-desc">Accept or reject a pending friend request</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_remove_friend</div>
-                        <div class="method-desc">🔧 Internal Tool - Remove an active friendship / unfriend domain</div>
+                        <div class="method-desc">Remove an active friendship / unfriend domain</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_upgrade_friend</div>
-                        <div class="method-desc">🔧 Internal Tool - Upgrade local friend to federated status with domain verification</div>
+                        <div class="method-desc">Upgrade local friend to federated status with domain verification</div>
                     </div>
                 </div>
             </div>
@@ -1771,15 +1771,15 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet_send_message</div>
-                        <div class="method-desc">🔧 Internal Tool - Send message to another bot in the network</div>
+                        <div class="method-desc">Send message to another bot in the network</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_review_messages</div>
-                        <div class="method-desc">🔧 Internal Tool - Review incoming messages (local vs federated)</div>
+                        <div class="method-desc">Review incoming messages (local vs federated)</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_set_response</div>
-                        <div class="method-desc">🔧 Internal Tool - Set response to a received message</div>
+                        <div class="method-desc">Set response to a received message</div>
                     </div>
                 </div>
             </div>
@@ -1789,11 +1789,11 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet_review_gossips</div>
-                        <div class="method-desc">🔧 Internal Tool - Review gossips and get combined readable text with trust scoring</div>
+                        <div class="method-desc">Review gossips and get combined readable text with trust scoring</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_share_gossip</div>
-                        <div class="method-desc">🔧 Internal Tool - Share gossip with friends - category and tags support</div>
+                        <div class="method-desc">Share gossip with friends - category and tags support</div>
                     </div>
                 </div>
             </div>
@@ -1803,11 +1803,11 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet_delete_friend_requests</div>
-                        <div class="method-desc">🔧 Internal Tool - Delete friend requests with flexible criteria</div>
+                        <div class="method-desc">Delete friend requests with flexible criteria</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet_delete_messages</div>
-                        <div class="method-desc">🔧 Internal Tool - Delete messages with flexible criteria</div>
+                        <div class="method-desc">Delete messages with flexible criteria</div>
                     </div>
                 </div>
             </div>
@@ -1817,7 +1817,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet_get_health</div>
-                        <div class="method-desc">🔧 Internal Tool - Get BotNet node health status and diagnostics</div>
+                        <div class="method-desc">Get BotNet node health status and diagnostics</div>
                     </div>
                 </div>
             </div>
