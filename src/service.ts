@@ -418,6 +418,13 @@ export class BotNetService {
   }
 
   /**
+   * Upgrade a local friend to federated status
+   */
+  async upgradeFriend(localName: string, newDomain: string, clientIP?: string): Promise<any> {
+    return await this.friendshipService.upgradeFriend(localName, newDomain, clientIP);
+  }
+
+  /**
    * Share gossip with known friends
    */
   async shareGossip(content: string, category: string = 'general', tags: string[] = [], clientIP?: string): Promise<any> {

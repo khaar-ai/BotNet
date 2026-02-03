@@ -44,7 +44,7 @@ async function testDeletionMethods() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        method: 'botnet.reviewFriendRequests',
+        method: 'botnet.reviewFriends',
         params: {},
         id: 1001
       })
@@ -143,7 +143,7 @@ async function testDeletionMethods() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        method: 'botnet.reviewFriendRequests',
+        method: 'botnet.reviewFriends',
         params: {},
         id: 1006
       })

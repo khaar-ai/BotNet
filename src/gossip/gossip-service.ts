@@ -228,8 +228,8 @@ export class GossipService {
       LIMIT ?
     `);
     
-    const botId = `${this.config.botName}@${this.config.botDomain}`;
-    const messages = stmt.all(botId, limit) as GossipMessage[];
+    const sourceId = this.getGossipSourceId();
+    const messages = stmt.all(sourceId, limit) as GossipMessage[];
     
     return messages.map(msg => ({
       message_id: msg.message_id,
@@ -244,10 +244,27 @@ export class GossipService {
     const hash = createHash("sha256").update(content).digest("hex");
     return `anon-${hash.substring(0, 16)}`;
   }
+
+  /**
+   * Get the proper source ID for gossip signing based on domain configuration
+   * Non-federated nodes (no domain or local names) should always be "anonymous"
+   * Federated nodes should use their domain format (botnet.example.com)
+   */
+  private getGossipSourceId(): string {
+    const domain = this.config.botDomain;
+    
+    // If the domain doesn't start with "botnet.", treat as non-federated (anonymous)
+    if (!domain || !domain.startsWith('botnet.')) {
+      return 'anonymous';
+    }
+    
+    // For federated nodes, return the domain only
+    return domain;
+  }
   
   async createMessage(content: string, category?: string): Promise<string> {
     const messageId = uuidv4();
-    const botId = `${this.config.botName}@${this.config.botDomain}`;
+    const sourceId = this.getGossipSourceId();
     
     const stmt = this.db.prepare(`
       INSERT INTO gossip_messages (
@@ -255,7 +272,7 @@ export class GossipService {
       ) VALUES (?, ?, ?, ?, ?)
     `);
     
-    stmt.run(messageId, botId, content, category, 80);
+    stmt.run(messageId, sourceId, content, category, 80);
     
     return messageId;
   }
@@ -370,7 +387,8 @@ export class GossipService {
       ) VALUES (?, ?, ?, ?, ?, ?)
     `);
 
-    const botId = `${this.config.botName}@${this.config.botDomain}`;
+    // For signing gossip, use proper source format based on domain
+    const sourceId = this.getGossipSourceId();
     const metadata = JSON.stringify({
       tags,
       sharedWith: friends.map(f => f.friend_domain),
@@ -378,7 +396,7 @@ export class GossipService {
       sharedAt: new Date().toISOString()
     });
 
-    shareStmt.run(messageId, botId, content, category, 85, metadata);
+    shareStmt.run(messageId, sourceId, content, category, 85, metadata);
 
     this.logger.info('📢 Gossip shared with friends', {
       messageId,
@@ -432,7 +450,17 @@ export class GossipService {
 
     // Combine gossip text for easy reading
     const combinedTexts = gossips.map(gossip => {
-      const source = gossip.source_bot_id.split('@')[0] || 'Unknown';
+      let source: string;
+      
+      if (gossip.source_bot_id.includes('@')) {
+        // Federated node - show domain only
+        const domain = gossip.source_bot_id.split('@')[1];
+        source = domain || 'unknown-domain';
+      } else {
+        // Local node - show as anonymous
+        source = 'anonymous';
+      }
+      
       const timestamp = new Date(gossip.created_at).toLocaleString();
       const confidence = gossip.confidence_score ? ` (${gossip.confidence_score}% confidence)` : '';
       
@@ -443,7 +471,15 @@ export class GossipService {
 
     // Generate summary
     const categories = [...new Set(gossips.map(g => g.category).filter(Boolean))];
-    const sources = [...new Set(gossips.map(g => g.source_bot_id.split('@')[0]))];
+    const sources = [...new Set(gossips.map(g => {
+      if (g.source_bot_id.includes('@')) {
+        // Federated node - use domain only
+        return g.source_bot_id.split('@')[1] || 'unknown-domain';
+      } else {
+        // Local node - use anonymous
+        return 'anonymous';
+      }
+    }))];
 
     this.logger.info('📖 Gossips reviewed', {
       count: gossips.length,

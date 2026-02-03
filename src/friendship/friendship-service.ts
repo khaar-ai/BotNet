@@ -787,4 +787,130 @@ export class FriendshipService {
       status: requestType === 'local' ? 'pending_review' : 'pending_challenge_review'
     };
   }
+
+  /**
+   * Upgrade a non-federated friend to federated status
+   * Called by a formerly local node that acquired a domain
+   * Automatically triggers domain verification for the federated domain
+   */
+  async upgradeFriend(localName: string, newDomain: string, clientIP?: string): Promise<{ 
+    success: boolean; 
+    friendshipId?: string; 
+    challengeId?: string; 
+    message: string;
+  }> {
+    // Rate limiting check
+    const rateLimitKey = clientIP || newDomain;
+    if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'upgradeFriend')) {
+      throw new Error('Rate limit exceeded for friend upgrade. Please try again later.');
+    }
+
+    // Validate the new domain format
+    const newRequestType = this.determineRequestType(newDomain);
+    if (newRequestType !== 'federated') {
+      return {
+        success: false,
+        message: `Invalid upgrade domain: ${newDomain}. Must be federated domain with 'botnet.' prefix.`
+      };
+    }
+
+    // Find existing local friendship
+    const existingFriendship = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE friend_domain = ? AND status = 'active'
+    `).get(localName);
+
+    if (!existingFriendship) {
+      return {
+        success: false,
+        message: `No active local friendship found with name: ${localName}`
+      };
+    }
+
+    // Check if the new domain already has a friendship
+    const domainConflict = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE friend_domain = ?
+    `).get(newDomain);
+
+    if (domainConflict) {
+      return {
+        success: false,
+        message: `Domain ${newDomain} already has a friendship (status: ${domainConflict.status})`
+      };
+    }
+
+    // Update the existing friendship with new domain
+    const updateStmt = this.database.prepare(`
+      UPDATE friendships 
+      SET friend_domain = ?, 
+          status = 'pending',
+          metadata = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    const metadata = JSON.stringify({
+      type: 'upgraded',
+      originalLocalName: localName,
+      requestType: 'federated',
+      challengeAttempts: 0,
+      upgradedAt: new Date().toISOString(),
+      direction: 'incoming'  // Treat as incoming for verification workflow
+    });
+
+    updateStmt.run(newDomain, metadata, existingFriendship.id);
+
+    // Automatically create domain challenge for verification
+    try {
+      const challengeResult = await this.initiateDomainChallenge(existingFriendship.id.toString());
+      
+      this.logger.info('🔄 Friend upgraded from local to federated', {
+        originalName: localName,
+        newDomain: newDomain,
+        friendshipId: existingFriendship.id,
+        challengeId: challengeResult.challengeId,
+        autoChallenge: true
+      });
+
+      return {
+        success: true,
+        friendshipId: existingFriendship.id.toString(),
+        challengeId: challengeResult.challengeId,
+        message: `Friend upgraded from '${localName}' to '${newDomain}'. Domain challenge automatically initiated for verification.`
+      };
+    } catch (challengeError) {
+      // If challenge creation fails, revert the upgrade
+      const revertStmt = this.database.prepare(`
+        UPDATE friendships 
+        SET friend_domain = ?, 
+            status = 'active',
+            metadata = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+
+      const revertMetadata = JSON.stringify({
+        type: 'upgrade_failed',
+        originalLocalName: localName,
+        failedDomain: newDomain,
+        error: challengeError instanceof Error ? challengeError.message : String(challengeError),
+        revertedAt: new Date().toISOString()
+      });
+
+      revertStmt.run(localName, revertMetadata, existingFriendship.id);
+
+      this.logger.error('🔄 Failed to upgrade friend - challenge creation failed, reverted', {
+        originalName: localName,
+        newDomain: newDomain,
+        friendshipId: existingFriendship.id,
+        error: challengeError
+      });
+
+      return {
+        success: false,
+        message: `Failed to upgrade friend: ${challengeError instanceof Error ? challengeError.message : String(challengeError)}. Friendship reverted to local status.`
+      };
+    }
+  }
 }

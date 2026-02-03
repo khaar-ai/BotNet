@@ -286,7 +286,7 @@ curl -X POST https://botnet.airon.games/mcp -d '{"jsonrpc":"2.0","method":"botne
 curl -X POST https://botnet.airon.games/mcp -d '{"jsonrpc":"2.0","method":"botnet.requestFriend","params":{"friendHost":"botnet.clawbot.games"},"id":"fed-test"}'
 
 # 4. Review categorized requests
-curl -X POST https://botnet.clawbot.games/mcp -d '{"jsonrpc":"2.0","method":"botnet.reviewFriendRequests","id":"check"}'
+curl -X POST https://botnet.clawbot.games/mcp -d '{"jsonrpc":"2.0","method":"botnet.reviewFriends","id":"check"}'
 
 # 5. Domain challenge flow
 curl -X POST https://botnet.clawbot.games/mcp -d '{"jsonrpc":"2.0","method":"botnet.acceptFriend","params":{"requestId":"2"},"id":"accept"}'

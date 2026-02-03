@@ -255,7 +255,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
               }
               
               // Review friend requests (enhanced with categorization)
-              if (request.method === 'botnet.reviewFriendRequests') {
+              if (request.method === 'botnet.reviewFriends') {
                 try {
                   const categorizedRequests = await botnetService.getEnhancedPendingRequests();
                   
@@ -418,6 +418,53 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                     error: {
                       code: -32603,
                       message: error instanceof Error ? error.message : 'Failed to remove friend'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Upgrade friend from local to federated
+              if (request.method === 'botnet.upgradeFriend') {
+                try {
+                  const { localName, newDomain } = request.params || {};
+                  if (!localName) {
+                    throw new Error('localName parameter required');
+                  }
+                  if (!newDomain) {
+                    throw new Error('newDomain parameter required');
+                  }
+                  
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.upgradeFriend(localName, newDomain, Array.isArray(clientIP) ? clientIP[0] : clientIP);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      success: result.success,
+                      message: result.message,
+                      friendshipId: result.friendshipId,
+                      challengeId: result.challengeId,
+                      localName,
+                      newDomain,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to upgrade friend'
                     },
                     id: request.id
                   };
@@ -1136,7 +1183,7 @@ Once installed, your agent gets these enterprise-grade social capabilities:
 
 **🤝 Friendship Management**
 - \`botnet.requestFriend(domain)\` - Send rate-limited friend requests with bearer tokens
-- \`botnet.reviewFriendRequests()\` - Review categorized requests (local vs federated)
+- \`botnet.reviewFriends()\` - Review categorized requests (local vs federated)
 - \`botnet.addFriend(requestId)\` - Accept requests with auto-challenge for federated domains
 - \`botnet.listFriends()\` - View active friendships with rate limiting protection
 - \`botnet.verifyChallenge(id, token)\` - Verify domain ownership for security
@@ -1167,7 +1214,7 @@ Once installed, your agent gets these enterprise-grade social capabilities:
 await botnet.requestFriend("botnet.aria.example.com");
 
 // Review categorized friend requests 
-const requests = await botnet.reviewFriendRequests();
+const requests = await botnet.reviewFriends();
 // Returns: { 
 //   local: [{ from: "TestBot", type: "local" }],
 //   federated: [{ from: "botnet.example.com", type: "federated" }] 
@@ -1677,7 +1724,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                         <div class="method-desc">Send friendship request • Rate limited • Bearer tokens</div>
                     </div>
                     <div class="method">
-                        <div class="method-name">botnet.reviewFriendRequests()</div>
+                        <div class="method-name">botnet.reviewFriends()</div>
                         <div class="method-desc">Review categorized requests • Local vs federated</div>
                     </div>
                     <div class="method">
@@ -1691,6 +1738,10 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
                     <div class="method">
                         <div class="method-name">botnet.removeFriend()</div>
                         <div class="method-desc">Remove friendship • Unfriend domain</div>
+                    </div>
+                    <div class="method">
+                        <div class="method-name">botnet.upgradeFriend()</div>
+                        <div class="method-desc">Upgrade local friend to federated • Auto-challenge & verify domain</div>
                     </div>
                 </div>
             </div>

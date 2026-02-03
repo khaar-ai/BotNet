@@ -56,7 +56,7 @@ async function testEnhancedFriendshipSystem() {
     console.log('\n📋 Test 3: Review Friendship Requests (Categorized)');
     const reviewRequest = {
       jsonrpc: '2.0',
-      method: 'botnet.reviewFriendRequests',
+      method: 'botnet.reviewFriends',
       params: {},
       id: 3
     };

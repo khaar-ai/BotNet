@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Test simplified friendship workflow: reviewFriendRequests() + addFriend()
+// Test simplified friendship workflow: reviewFriends() + addFriend()
 
 async function testSimplifiedWorkflow() {
   console.log('🧪 Testing Simplified BotNet Friendship Workflow...\n');
@@ -57,7 +57,7 @@ async function testSimplifiedWorkflow() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        method: 'botnet.reviewFriendRequests',
+        method: 'botnet.reviewFriends',
         params: {},
         id: 3
       })
