@@ -1,107 +1,139 @@
 // BotNet Friendship Service
 // Manages bot-to-bot relationships and connections
 
+import type Database from "better-sqlite3";
+import type { BotNetConfig } from "../../index.js";
+
 export interface Friendship {
   id: string;
-  botA: string;
-  botB: string;
+  friend_domain: string;
+  friend_bot_name?: string;
   status: 'pending' | 'active' | 'rejected' | 'blocked';
-  createdAt: string;
-  acceptedAt?: string;
+  created_at: string;
+  updated_at: string;
   metadata?: Record<string, any>;
 }
 
 export interface FriendshipRequest {
   id: string;
-  fromBot: string;
-  toBot: string;
+  fromDomain: string;
+  toDomain: string;
   message?: string;
   createdAt: string;
   status: 'pending' | 'accepted' | 'rejected';
 }
 
 export class FriendshipService {
-  private friendships: Map<string, Friendship> = new Map();
-  private pendingRequests: Map<string, FriendshipRequest> = new Map();
-  
+  private database: Database.Database;
+  private config: BotNetConfig;
   private logger: {
     info: (message: string, ...args: any[]) => void;
     error: (message: string, ...args: any[]) => void;
     warn: (message: string, ...args: any[]) => void;
   };
+  
+  private friendships: Map<string, Friendship> = new Map();
+  private pendingRequests: Map<string, FriendshipRequest> = new Map();
 
-  constructor(logger: FriendshipService['logger']) {
+  constructor(database: Database.Database, config: BotNetConfig, logger: FriendshipService['logger']) {
+    this.database = database;
+    this.config = config;
     this.logger = logger;
   }
 
   /**
-   * Send friendship request to another bot
+   * Create a pending friendship request (sent to another domain)
    */
-  async sendFriendshipRequest(fromBot: string, toBot: string, message?: string): Promise<FriendshipRequest> {
-    const requestId = `freq_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  async sendFriendshipRequest(fromDomain: string, toDomain: string, message?: string): Promise<FriendshipRequest> {
+    // Check if friendship already exists
+    const existing = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE friend_domain = ? AND (status = 'active' OR status = 'pending')
+    `).get(toDomain);
     
-    const request: FriendshipRequest = {
-      id: requestId,
-      fromBot,
-      toBot, 
+    if (existing) {
+      throw new Error(`Friendship with ${toDomain} already exists or is pending`);
+    }
+    
+    // Insert pending friendship
+    const stmt = this.database.prepare(`
+      INSERT INTO friendships (friend_domain, status, metadata)
+      VALUES (?, 'pending', ?)
+    `);
+    
+    const metadata = JSON.stringify({ 
+      message,
+      direction: 'outgoing',
+      fromDomain
+    });
+    
+    const result = stmt.run(toDomain, metadata);
+    
+    this.logger.info('🦞 Friendship: Request sent', {
+      fromDomain,
+      toDomain,
+      hasMessage: !!message,
+      friendshipId: result.lastInsertRowid
+    });
+
+    return {
+      id: result.lastInsertRowid!.toString(),
+      fromDomain,
+      toDomain, 
       message,
       createdAt: new Date().toISOString(),
       status: 'pending'
     };
-
-    this.pendingRequests.set(requestId, request);
-
-    this.logger.info('🐉 Friendship: Request sent', {
-      requestId,
-      fromBot,
-      toBot,
-      hasMessage: !!message
-    });
-
-    return request;
   }
 
   /**
-   * Accept friendship request
+   * Accept friendship request from another domain
    */
-  async acceptFriendshipRequest(requestId: string): Promise<Friendship> {
-    const request = this.pendingRequests.get(requestId);
-    if (!request) {
-      throw new Error('Friendship request not found');
-    }
-
-    if (request.status !== 'pending') {
-      throw new Error('Friendship request already processed');
-    }
-
-    // Create friendship
-    const friendshipId = `friend_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const friendship: Friendship = {
-      id: friendshipId,
-      botA: request.fromBot,
-      botB: request.toBot,
-      status: 'active',
-      createdAt: request.createdAt,
-      acceptedAt: new Date().toISOString(),
-      metadata: {
-        requestId,
-        requestMessage: request.message
-      }
-    };
-
-    this.friendships.set(friendshipId, friendship);
-
-    // Update request status
-    request.status = 'accepted';
+  async acceptFriendshipRequest(fromDomain: string, toDomain: string): Promise<{ friendshipId: string }> {
+    // Check if we have a pending friendship from this domain
+    const existing = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE friend_domain = ? AND status = 'pending'
+    `).get(fromDomain);
     
-    this.logger.info('🐉 Friendship: Request accepted', {
-      requestId,
-      friendshipId,
-      botA: friendship.botA,
-      botB: friendship.botB
-    });
-
-    return friendship;
+    if (existing) {
+      // Update existing to active
+      const stmt = this.database.prepare(`
+        UPDATE friendships 
+        SET status = 'active', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+      stmt.run(existing.id);
+      
+      this.logger.info('🦞 Friendship: Request accepted (existing)', {
+        friendshipId: existing.id,
+        fromDomain,
+        toDomain
+      });
+      
+      return { friendshipId: existing.id.toString() };
+    } else {
+      // Create new active friendship (they requested us)
+      const stmt = this.database.prepare(`
+        INSERT INTO friendships (friend_domain, status, metadata)
+        VALUES (?, 'active', ?)
+      `);
+      
+      const metadata = JSON.stringify({ 
+        direction: 'incoming',
+        acceptedBy: toDomain
+      });
+      
+      const result = stmt.run(fromDomain, metadata);
+      
+      this.logger.info('🦞 Friendship: Request accepted (new)', {
+        friendshipId: result.lastInsertRowid,
+        fromDomain,
+        toDomain
+      });
+      
+      return { friendshipId: result.lastInsertRowid!.toString() };
+    }
   }
 
   /**
@@ -121,104 +153,89 @@ export class FriendshipService {
     
     this.logger.info('🐉 Friendship: Request rejected', {
       requestId,
-      fromBot: request.fromBot,
-      toBot: request.toBot
+      fromDomain: request.fromDomain,
+      toDomain: request.toDomain
     });
 
     return true;
   }
 
   /**
-   * List friendships for a bot
+   * List active friendships
    */
-  async listFriendships(botName: string): Promise<Friendship[]> {
-    return Array.from(this.friendships.values())
-      .filter(friendship => 
-        (friendship.botA === botName || friendship.botB === botName) &&
-        friendship.status === 'active'
-      );
+  async listFriendships(): Promise<Friendship[]> {
+    const stmt = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE status = 'active'
+      ORDER BY created_at DESC
+    `);
+    
+    return stmt.all() as Friendship[];
   }
 
   /**
-   * List pending friendship requests for a bot
+   * List pending incoming friendship requests 
    */
-  async listPendingRequests(botName: string): Promise<FriendshipRequest[]> {
-    return Array.from(this.pendingRequests.values())
-      .filter(request => 
-        request.toBot === botName && 
-        request.status === 'pending'
-      );
+  async listPendingRequests(): Promise<FriendshipRequest[]> {
+    const stmt = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE status = 'pending'
+      ORDER BY created_at DESC
+    `);
+    
+    const rows = stmt.all() as any[];
+    
+    return rows.map(row => {
+      const metadata = row.metadata ? JSON.parse(row.metadata) : {};
+      return {
+        id: row.id.toString(),
+        fromDomain: row.friend_domain,
+        toDomain: this.config.botDomain,
+        message: metadata.message || '',
+        createdAt: row.created_at,
+        status: 'pending'
+      };
+    });
   }
 
   /**
-   * Check friendship status between two bots
+   * Check friendship status with a domain
    */
-  async getFriendshipStatus(botA: string, botB: string): Promise<'not_connected' | 'pending' | 'active' | 'blocked'> {
-    // Check for active friendship
-    const activeFriendship = Array.from(this.friendships.values())
-      .find(friendship => 
-        friendship.status === 'active' && (
-          (friendship.botA === botA && friendship.botB === botB) ||
-          (friendship.botA === botB && friendship.botB === botA)
-        )
-      );
+  async getFriendshipStatus(currentDomain: string, targetDomain: string): Promise<'not_connected' | 'pending' | 'active' | 'blocked'> {
+    // Check for existing friendship with target domain
+    const friendship = this.database.prepare(`
+      SELECT status FROM friendships 
+      WHERE friend_domain = ?
+    `).get(targetDomain);
 
-    if (activeFriendship) {
-      return 'active';
-    }
-
-    // Check for blocked friendship
-    const blockedFriendship = Array.from(this.friendships.values())
-      .find(friendship => 
-        friendship.status === 'blocked' && (
-          (friendship.botA === botA && friendship.botB === botB) ||
-          (friendship.botA === botB && friendship.botB === botA)
-        )
-      );
-
-    if (blockedFriendship) {
-      return 'blocked';
-    }
-
-    // Check for pending requests
-    const pendingRequest = Array.from(this.pendingRequests.values())
-      .find(request => 
-        request.status === 'pending' && (
-          (request.fromBot === botA && request.toBot === botB) ||
-          (request.fromBot === botB && request.toBot === botA)
-        )
-      );
-
-    if (pendingRequest) {
-      return 'pending';
+    if (friendship) {
+      return friendship.status as 'pending' | 'active' | 'blocked';
     }
 
     return 'not_connected';
   }
 
   /**
-   * Block another bot (prevent future friendship requests)
+   * Block a domain (prevent future friendship requests)
    */
-  async blockBot(fromBot: string, targetBot: string): Promise<boolean> {
+  async blockBot(fromDomain: string, targetDomain: string): Promise<boolean> {
     const blockId = `block_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    const block: Friendship = {
-      id: blockId,
-      botA: fromBot,
-      botB: targetBot,
-      status: 'blocked',
-      createdAt: new Date().toISOString(),
-      metadata: {
-        type: 'block'
-      }
-    };
+    const stmt = this.database.prepare(`
+      INSERT OR REPLACE INTO friendships (friend_domain, status, metadata)
+      VALUES (?, 'blocked', ?)
+    `);
+    
+    const metadata = JSON.stringify({
+      type: 'block',
+      blockedBy: fromDomain
+    });
+    
+    stmt.run(targetDomain, metadata);
 
-    this.friendships.set(blockId, block);
-
-    this.logger.info('🐉 Friendship: Bot blocked', {
-      fromBot,
-      targetBot,
-      blockId
+    this.logger.info('🐉 Friendship: Domain blocked', {
+      fromDomain,
+      targetDomain
     });
 
     return true;
@@ -228,7 +245,11 @@ export class FriendshipService {
    * Get friendship by ID
    */
   async getFriendship(friendshipId: string): Promise<Friendship | null> {
-    return this.friendships.get(friendshipId) || null;
+    const friendship = this.database.prepare(`
+      SELECT * FROM friendships WHERE id = ?
+    `).get(friendshipId);
+    
+    return friendship || null;
   }
 
   /**
@@ -239,23 +260,65 @@ export class FriendshipService {
   }
 
   /**
-   * Get stats for a bot
+   * Get stats for this bot
    */
-  async getBotStats(botName: string): Promise<{
+  async getBotStats(): Promise<{
     friendships: number;
     pendingRequests: number;
     sentRequests: number;
   }> {
-    const friendships = await this.listFriendships(botName);
-    const pendingRequests = await this.listPendingRequests(botName);
+    const friendships = await this.listFriendships();
+    const pendingRequests = await this.listPendingRequests();
     
-    const sentRequests = Array.from(this.pendingRequests.values())
-      .filter(request => request.fromBot === botName && request.status === 'pending');
+    // Count outgoing pending requests
+    const sentStmt = this.database.prepare(`
+      SELECT COUNT(*) as count FROM friendships 
+      WHERE status = 'pending' AND JSON_EXTRACT(metadata, '$.direction') = 'outgoing'
+    `);
+    const sentResult = sentStmt.get() as { count: number };
 
     return {
       friendships: friendships.length,
       pendingRequests: pendingRequests.length,
-      sentRequests: sentRequests.length
+      sentRequests: sentResult.count
     };
+  }
+  
+  /**
+   * Create an incoming friendship request (from external domain)
+   */
+  async createIncomingFriendRequest(fromDomain: string, message?: string): Promise<void> {
+    // Check if friendship already exists
+    const existing = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE friend_domain = ?
+    `).get(fromDomain);
+    
+    if (existing) {
+      this.logger.warn('🦞 Friendship: Request from domain that already has relationship', {
+        fromDomain,
+        existingStatus: existing.status
+      });
+      return;
+    }
+    
+    // Create pending incoming friendship
+    const stmt = this.database.prepare(`
+      INSERT INTO friendships (friend_domain, status, metadata)
+      VALUES (?, 'pending', ?)
+    `);
+    
+    const metadata = JSON.stringify({ 
+      message,
+      direction: 'incoming'
+    });
+    
+    const result = stmt.run(fromDomain, metadata);
+    
+    this.logger.info('🦞 Friendship: Incoming request received', {
+      fromDomain,
+      hasMessage: !!message,
+      friendshipId: result.lastInsertRowid
+    });
   }
 }

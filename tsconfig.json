@@ -18,12 +18,13 @@
     "types": ["node"]
   },
   "include": [
-    "index.ts"
+    "index.ts",
+    "src/**/*",
+    "types.d.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "src/**/*",
     "**/*.test.ts"
   ]
 }

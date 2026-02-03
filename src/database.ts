@@ -4,9 +4,7 @@ import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
 import type { Logger } from "./logger.js";
 
-export interface BotNetDatabase extends Database.Database {
-  // Add any custom methods if needed
-}
+export type BotNetDatabase = Database.Database;
 
 export async function initializeDatabase(dbPath: string, logger: Logger): Promise<BotNetDatabase> {
   logger.info("Initializing database", { path: dbPath });
@@ -16,7 +14,7 @@ export async function initializeDatabase(dbPath: string, logger: Logger): Promis
   mkdirSync(dir, { recursive: true });
   
   // Open database
-  const db = new Database(dbPath) as BotNetDatabase;
+  const db = new (Database as any)(dbPath);
   
   // Enable foreign keys
   db.pragma("foreign_keys = ON");
@@ -111,6 +109,36 @@ async function runMigrations(db: Database.Database, logger: Logger): Promise<voi
         CREATE INDEX IF NOT EXISTS idx_gossip_source ON gossip_messages(source_bot_id);
         CREATE INDEX IF NOT EXISTS idx_gossip_created ON gossip_messages(created_at);
         CREATE INDEX IF NOT EXISTS idx_anonymous_gossip_created ON anonymous_gossip(created_at);
+      `
+    },
+    {
+      filename: "002_domain_based_friendships.sql",
+      sql: `
+        -- Update friendships table to be domain-based instead of bot-based
+        -- First, backup existing data
+        CREATE TABLE IF NOT EXISTS friendships_backup AS SELECT * FROM friendships;
+        
+        -- Drop old table
+        DROP TABLE friendships;
+        
+        -- Create new domain-based friendships table
+        CREATE TABLE friendships (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          friend_domain TEXT NOT NULL UNIQUE,
+          friend_bot_name TEXT,
+          status TEXT NOT NULL DEFAULT 'pending',
+          tier TEXT NOT NULL DEFAULT 'bootstrap',
+          trust_score INTEGER DEFAULT 50,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_seen TIMESTAMP,
+          metadata JSON
+        );
+        
+        -- Create indexes for new table
+        CREATE INDEX IF NOT EXISTS idx_friendships_domain ON friendships(friend_domain);
+        CREATE INDEX IF NOT EXISTS idx_friendships_status ON friendships(status);
+        CREATE INDEX IF NOT EXISTS idx_friendships_tier ON friendships(tier);
       `
     },
   ];

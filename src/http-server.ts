@@ -1,5 +1,6 @@
 import http from 'http';
 import { BotNetConfig } from '../index.js';
+import { BotNetService } from './service.js';
 
 export interface BotNetServerOptions {
   config: BotNetConfig;
@@ -8,10 +9,11 @@ export interface BotNetServerOptions {
     error: (message: string, ...args: any[]) => void;
     warn: (message: string, ...args: any[]) => void;
   };
+  botnetService?: BotNetService;
 }
 
 export function createBotNetServer(options: BotNetServerOptions): http.Server {
-  const { config, logger } = options;
+  const { config, logger, botnetService } = options;
   
   logger.info('🐉 Creating BotNet HTTP server with modern landing page v2', {
     botName: config.botName,
@@ -20,7 +22,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
     protocol: 'MCP/JSON-RPC-2.0'
   });
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = req.url || '';
     const method = req.method;
     
@@ -114,7 +116,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
         req.on('data', chunk => {
           body += chunk.toString();
         });
-        req.on('end', () => {
+        req.on('end', async () => {
           try {
             const request = JSON.parse(body);
             logger.info('🐉 MCP Request received:', request);
@@ -173,6 +175,164 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify(response, null, 2));
               return;
+            }
+            
+            // Friend request methods - only if we have botnetService
+            if (botnetService) {
+              // Request friendship
+              if (request.method === 'botnet.requestFriend') {
+                try {
+                  const { friendHost } = request.params || {};
+                  if (!friendHost) {
+                    throw new Error('friendHost parameter required');
+                  }
+                  
+                  // Send friend request to remote bot
+                  const result = await botnetService.sendFriendRequest(friendHost, config.botName);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      status: 'sent',
+                      friendHost,
+                      requestId: result.requestId,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to send friend request'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+              
+              // Review friend requests
+              if (request.method === 'botnet.reviewFriendRequests') {
+                try {
+                  const pendingRequests = await botnetService.getPendingFriendRequests(config.botName);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      requests: pendingRequests.map(req => ({
+                        from: req.fromBot,
+                        message: req.message,
+                        timestamp: req.createdAt,
+                        requestId: req.id
+                      }))
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to review friend requests'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+              
+              // Accept friend request (add friend)
+              if (request.method === 'botnet.addFriend') {
+                try {
+                  const { friendHost } = request.params || {};
+                  if (!friendHost) {
+                    throw new Error('friendHost parameter required');
+                  }
+                  
+                  const result = await botnetService.acceptFriendRequest(friendHost, config.botName);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      status: 'accepted',
+                      friendHost,
+                      friendshipId: result.friendshipId,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to add friend'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+              
+              // List friends
+              if (request.method === 'botnet.listFriends') {
+                try {
+                  const friends = await botnetService.getFriends(config.botName);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      friends: friends.map(friend => ({
+                        host: friend.friend_id,
+                        name: friend.friend_name,
+                        status: friend.status,
+                        since: friend.created_at
+                      }))
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to list friends'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
             }
             
             // Default MCP response for unimplemented methods

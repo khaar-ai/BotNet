@@ -110,9 +110,9 @@ async function handleFriendshipRequest(service: BotNetService, req: IncomingMess
   const body = await readBody(req);
   const request = JSON.parse(body);
   const result = await service.requestFriendship(request);
-  res.statusCode = result.success ? 200 : 400;
+  res.statusCode = 200;
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify(result));
+  res.end(JSON.stringify({ success: true, result }));
 }
 
 async function handleFriendshipStatus(service: BotNetService, req: IncomingMessage, res: ServerResponse) {
@@ -126,7 +126,8 @@ async function handleFriendshipStatus(service: BotNetService, req: IncomingMessa
     return;
   }
   
-  const status = await service.getFriendshipStatus(friendId);
+  // For now, use a placeholder for the current domain name - this should be passed from config
+  const status = await service.getFriendshipStatus("currentDomain", friendId);
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(status));

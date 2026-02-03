@@ -5,13 +5,10 @@ import type { Logger } from "./logger.js";
 import { AuthService } from "./auth/auth-service.js";
 import { FriendshipService } from "./friendship/friendship-service.js";
 import { GossipService } from "./gossip/gossip-service.js";
-import type { OpenClawRuntime } from "openclaw/plugin-sdk";
-
 interface BotNetServiceOptions {
   database: Database.Database;
   config: BotNetConfig;
   logger: Logger;
-  runtime: OpenClawRuntime;
 }
 
 export class BotNetService {
@@ -22,7 +19,7 @@ export class BotNetService {
   constructor(private options: BotNetServiceOptions) {
     const { database, config, logger } = options;
     
-    this.authService = new AuthService(database, logger.child("auth"));
+    this.authService = new AuthService(logger.child("auth"));
     this.friendshipService = new FriendshipService(database, config, logger.child("friendship"));
     this.gossipService = new GossipService(database, config, logger.child("gossip"));
   }
@@ -83,13 +80,13 @@ export class BotNetService {
     // Route MCP requests based on type
     switch (request.type) {
       case "friendship.request":
-        return await this.friendshipService.handleFriendshipRequest(request);
+        return await this.friendshipService.createIncomingFriendRequest(request.fromDomain, request.message);
       
       case "friendship.accept":
-        return await this.friendshipService.acceptFriendship(request);
+        return await this.friendshipService.acceptFriendshipRequest(request.fromDomain, request.toDomain);
       
       case "friendship.reject":
-        return await this.friendshipService.rejectFriendship(request);
+        return await this.friendshipService.rejectFriendshipRequest(request.id);
       
       case "gossip.exchange":
         return await this.gossipService.handleExchange(request);
@@ -97,11 +94,11 @@ export class BotNetService {
       case "gossip.query":
         return await this.gossipService.handleQuery(request);
       
-      case "auth.challenge":
-        return await this.authService.handleChallenge(request);
+      // case "auth.challenge":
+      //   return await this.authService.handleChallenge(request);
       
-      case "auth.response":
-        return await this.authService.handleResponse(request);
+      // case "auth.response":
+      //   return await this.authService.handleResponse(request);
       
       default:
         return {
@@ -116,11 +113,11 @@ export class BotNetService {
   }
   
   async requestFriendship(request: any) {
-    return this.friendshipService.createFriendshipRequest(request);
+    return this.friendshipService.sendFriendshipRequest(request.fromDomain, request.toDomain, request.message);
   }
   
-  async getFriendshipStatus(friendId: string) {
-    return this.friendshipService.getFriendshipStatus(friendId);
+  async getFriendshipStatus(currentDomain: string, targetDomain: string) {
+    return this.friendshipService.getFriendshipStatus(currentDomain, targetDomain);
   }
   
   async exchangeGossip(request: any) {
@@ -163,6 +160,64 @@ export class BotNetService {
     return reputation;
   }
   
+  /**
+   * Send friend request to remote domain
+   */
+  async sendFriendRequest(friendHost: string, fromDomain: string): Promise<{ requestId: string }> {
+    try {
+      // First, record the outgoing request locally
+      const request = await this.friendshipService.sendFriendshipRequest(fromDomain, friendHost);
+      
+      // TODO: Make HTTP request to remote domain to notify them
+      // For now, we'll just store it locally
+      this.options.logger.info("🦞 Friend request created locally", {
+        friendHost,
+        fromDomain,
+        requestId: request.id
+      });
+      
+      return { requestId: request.id };
+    } catch (error) {
+      this.options.logger.error("🦞 Failed to send friend request", { friendHost, fromDomain, error });
+      throw error;
+    }
+  }
+  
+  /**
+   * Get pending friend requests for this domain
+   */
+  async getPendingFriendRequests(domainName: string): Promise<any[]> {
+    return await this.friendshipService.listPendingRequests();
+  }
+  
+  /**
+   * Accept friend request from another domain
+   */
+  async acceptFriendRequest(friendHost: string, domainName: string): Promise<{ friendshipId: string }> {
+    try {
+      const result = await this.friendshipService.acceptFriendshipRequest(friendHost, domainName);
+      
+      // TODO: Notify the remote domain that we accepted
+      this.options.logger.info("🦞 Friend request accepted", {
+        friendHost,
+        domainName,
+        friendshipId: result.friendshipId
+      });
+      
+      return result;
+    } catch (error) {
+      this.options.logger.error("🦞 Failed to accept friend request", { friendHost, domainName, error });
+      throw error;
+    }
+  }
+  
+  /**
+   * Get list of active friends
+   */
+  async getFriends(domainName: string): Promise<any[]> {
+    return await this.friendshipService.listFriendships();
+  }
+
   async shutdown() {
     this.options.logger.info("Shutting down BotNet service");
     // Cleanup tasks if needed

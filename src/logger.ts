@@ -6,7 +6,11 @@ export interface ILogger {
 }
 
 export class Logger implements ILogger {
-  constructor(private baseLogger: ILogger) {}
+  public baseLogger: ILogger;
+  
+  constructor(baseLogger: ILogger) {
+    this.baseLogger = baseLogger;
+  }
 
   debug(message: string, meta?: any): void {
     this.baseLogger.debug(`[BotNet] ${message}`, meta);
