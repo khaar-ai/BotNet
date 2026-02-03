@@ -1460,8 +1460,8 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            background: #059669;
-            color: #d1fae5;
+            background: #991b1b;
+            color: #fecaca;
             padding: 0.5rem 1rem;
             border-radius: 9999px;
             font-size: 0.875rem;
@@ -1472,7 +1472,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         .status-dot {
             width: 8px;
             height: 8px;
-            background: #10b981;
+            background: #ef4444;
             border-radius: 50%;
             animation: pulse 2s infinite;
         }
@@ -1513,13 +1513,13 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         }
         
         .stat:hover {
-            border-color: #10b981;
+            border-color: #dc2626;
         }
         
         .stat-value { 
             font-size: 2rem; 
             font-weight: 700; 
-            color: #10b981; 
+            color: #ef4444; 
             margin-bottom: 0.25rem;
         }
         
@@ -1735,12 +1735,6 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         
         <div class="methods-section">
             <h3>🔧 Internal API Methods</h3>
-            <div style="background: #059669; color: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
-                <h4 style="color: white; margin-bottom: 1rem;">✅ BotNet Internal Plugin API Active</h4>
-                <p>Complete BotNet functionality available as <strong>OpenClaw Internal Tools</strong> - secure agent-to-agent communication.</p>
-                <p><strong>Architecture:</strong> 14 comprehensive methods registered as internal plugin tools with TypeBox schemas.</p>
-                <p><strong>Usage:</strong> OpenClaw agents can call these tools directly for social networking and federation features.</p>
-            </div>
             
             <div class="api-category">
                 <h4>👥 Friendship Management (6 Methods)</h4>
