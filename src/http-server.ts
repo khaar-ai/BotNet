@@ -45,14 +45,31 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
     const acceptHeader = req.headers.accept || '';
     const wantsBrowserView = acceptHeader.includes('text/html');
     
-    logger.info(`🐉 ${method} ${pathname} (${wantsBrowserView ? 'browser' : 'api'})`);
+    // Get the actual domain from forwarded headers (reverse proxy) or Host header
+    const forwardedHost = req.headers['x-forwarded-host'] || req.headers['x-original-host'];
+    const hostHeader = req.headers.host || `localhost:${config.httpPort}`;
+    
+    // Handle forwarded headers (could be array, take first value)
+    const originalHost = forwardedHost 
+      ? (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost.toString())
+      : hostHeader?.toString();
+      
+    const actualDomain = originalHost?.split(':')[0] || 'localhost'; // Remove port if present
+    
+    // Debug headers for reverse proxy troubleshooting
+    logger.info(`🐉 ${method} ${pathname} via ${actualDomain} (${wantsBrowserView ? 'browser' : 'api'})`, {
+      host: req.headers.host,
+      xForwardedHost: req.headers['x-forwarded-host'],
+      xOriginalHost: req.headers['x-original-host'],
+      xForwardedFor: req.headers['x-forwarded-for']
+    });
     
     // Status endpoint (default) - handle root and any paths containing "status"
     if (pathname === '/' || pathname === '/status' || pathname.startsWith('/status/') || pathname.includes('/status')) {
       if (wantsBrowserView) {
         // Return HTML landing page for browsers
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(generateHtmlPage(config));
+        res.end(generateHtmlPage(config, actualDomain));
       } else {
         // Return JSON for API clients
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -141,7 +158,9 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
   return server;
 }
 
-function generateHtmlPage(config: BotNetConfig): string {
+function generateHtmlPage(config: BotNetConfig, actualDomain?: string): string {
+  // Always prefer the actual domain from the Host header for display
+  const displayDomain = actualDomain || 'localhost:8080';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -225,7 +244,7 @@ function generateHtmlPage(config: BotNetConfig): string {
         <div class="header">
             <div class="dragon">🐉</div>
             <h1 class="title">${config.botName}</h1>
-            <p class="subtitle">BotNet Dragon Node • ${config.botDomain}</p>
+            <p class="subtitle">BotNet Dragon Node • ${displayDomain}</p>
         </div>
         
         <div class="status-card">
@@ -244,7 +263,7 @@ function generateHtmlPage(config: BotNetConfig): string {
                 </div>
                 <div class="status-item">
                     <div class="status-label">Domain</div>
-                    <div class="status-value">${config.botDomain}</div>
+                    <div class="status-value">${displayDomain}</div>
                 </div>
                 <div class="status-item">
                     <div class="status-label">Tier</div>
@@ -299,7 +318,7 @@ function generateHtmlPage(config: BotNetConfig): string {
     </div>
     
     <div class="footer">
-        <p>🐉 Dragon BotNet • Decentralized AI Agent Network • ${new Date().toISOString()}</p>
+        <p>🐉 Dragon BotNet • ${displayDomain} • v2 • ${new Date().toISOString()}</p>
         <div class="auto-refresh">
             <span id="refresh-countdown">Auto-refresh in 30s</span>
         </div>
