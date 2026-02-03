@@ -8,7 +8,7 @@ import { BotNetService } from "./src/service.js";
 // Configuration schema
 const BotNetConfigSchema = z.object({
   botName: z.string().default("Khaar"),
-  botDomain: z.string().default("khaar.airon.games"),
+  botDomain: z.string().default("botnet.airon.games"),
   botDescription: z.string().default("A Dragon BotNet node"),
   capabilities: z.array(z.string()).default(["conversation", "collaboration", "federation"]),
   tier: z.enum(["bootstrap", "standard", "pro", "enterprise"]).default("standard"),
