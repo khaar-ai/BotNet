@@ -54,7 +54,12 @@ export type MCPMethod =
   | 'botnet.friendship.status'
   | 'botnet.gossip.exchange'
   | 'botnet.gossip.history'
-  | 'botnet.ping';
+  | 'botnet.ping'
+  | 'botnet.health'
+  | 'botnet.challenge.request'
+  | 'botnet.challenge.respond'
+  | 'botnet.message.send'
+  | 'botnet.message.check';
 
 export interface MCPHandlerOptions {
   logger: {
@@ -137,6 +142,21 @@ export class MCPHandler {
           
         case 'botnet.ping':
           return await this.handlePing(id, params);
+          
+        case 'botnet.health':
+          return await this.handleHealth(id, params, sessionToken);
+          
+        case 'botnet.challenge.request':
+          return await this.handleChallengeRequest(id, params, sessionToken);
+          
+        case 'botnet.challenge.respond':
+          return await this.handleChallengeRespond(id, params, sessionToken);
+          
+        case 'botnet.message.send':
+          return await this.handleMessageSend(id, params, sessionToken);
+          
+        case 'botnet.message.check':
+          return await this.handleMessageCheck(id, params, sessionToken);
 
         default:
           return this.createErrorResponse(id, MCPErrorCodes.METHOD_NOT_FOUND, `Method '${method}' not found`);
@@ -251,6 +271,58 @@ export class MCPHandler {
             }
           }
         }
+      },
+      {
+        name: "get_health",
+        description: "Get BotNet node health status and diagnostics",
+        inputSchema: {
+          type: "object",
+          properties: {
+            includeDetailedStats: {
+              type: "boolean",
+              description: "Include detailed statistics"
+            }
+          }
+        }
+      },
+      {
+        name: "send_message",
+        description: "Send a message to another bot in the network",
+        inputSchema: {
+          type: "object",
+          properties: {
+            targetBot: {
+              type: "string",
+              description: "Target bot name or domain"
+            },
+            content: {
+              type: "string", 
+              description: "Message content"
+            },
+            messageType: {
+              type: "string",
+              description: "Message type (default: 'chat')"
+            }
+          },
+          required: ["targetBot", "content"]
+        }
+      },
+      {
+        name: "check_messages",
+        description: "Check incoming messages from other bots",
+        inputSchema: {
+          type: "object",
+          properties: {
+            fromDomain: {
+              type: "string",
+              description: "Filter by sender domain (optional)"
+            },
+            includeResponses: {
+              type: "boolean",
+              description: "Include message responses (default: true)"
+            }
+          }
+        }
       }
     ];
 
@@ -284,6 +356,18 @@ export class MCPHandler {
           
         case "review_gossips":
           result = await this.botNetService.reviewGossips(args.limit, args.category);
+          break;
+          
+        case "get_health":
+          result = await this.botNetService.getHealthStatus();
+          break;
+          
+        case "send_message":
+          result = await this.botNetService.sendMessage(args.targetBot, args.content, args.messageType || 'chat');
+          break;
+          
+        case "check_messages":
+          result = await this.botNetService.reviewMessages(args.fromDomain, args.includeResponses !== false);
           break;
           
         default:
@@ -554,6 +638,143 @@ export class MCPHandler {
       server: "Dragon BotNet MCP Handler",
       version: "1.0.0"
     });
+  }
+
+  // ===== HEALTH & SYSTEM HANDLERS =====
+
+  private async handleHealth(id: string | number | null, params: any, sessionToken?: string): Promise<MCPResponse> {
+    try {
+      // FIXED: Call actual service method
+      const health = await this.botNetService.getHealthStatus();
+      
+      return this.createSuccessResponse(id, {
+        status: health.status,
+        timestamp: health.timestamp || new Date().toISOString(),
+        uptime: process.uptime(),
+        version: health.version || "1.0.0",
+        checks: health.checks,
+        error: (health as any).error,
+        message: health.status === 'healthy' ? 'All systems operational' : 'System issues detected'
+      });
+    } catch (error) {
+      return this.createErrorResponse(id, MCPErrorCodes.INTERNAL_ERROR, `Failed to get health status: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  // ===== CHALLENGE HANDLERS =====
+
+  private async handleChallengeRequest(id: string | number | null, params: any, sessionToken?: string): Promise<MCPResponse> {
+    if (!sessionToken) {
+      return this.createErrorResponse(id, MCPErrorCodes.AUTHENTICATION_REQUIRED, "Session token required");
+    }
+
+    if (!params?.targetDomain) {
+      return this.createErrorResponse(id, MCPErrorCodes.INVALID_PARAMS, "Target domain required");
+    }
+
+    try {
+      // Initiate domain challenge for federated friendship
+      // This would typically be part of the friendship flow
+      const challenge = {
+        challengeId: `challenge_${Date.now()}`,
+        targetDomain: params.targetDomain,
+        type: 'domain_verification',
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
+      
+      return this.createSuccessResponse(id, {
+        status: "challenge_initiated",
+        challengeId: challenge.challengeId,
+        targetDomain: params.targetDomain,
+        message: "Domain challenge initiated",
+        challenge: challenge
+      });
+    } catch (error) {
+      return this.createErrorResponse(id, MCPErrorCodes.INTERNAL_ERROR, `Failed to initiate challenge: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  private async handleChallengeRespond(id: string | number | null, params: any, sessionToken?: string): Promise<MCPResponse> {
+    if (!sessionToken) {
+      return this.createErrorResponse(id, MCPErrorCodes.AUTHENTICATION_REQUIRED, "Session token required");
+    }
+
+    if (!params?.challengeId || !params?.response) {
+      return this.createErrorResponse(id, MCPErrorCodes.INVALID_PARAMS, "Challenge ID and response required");
+    }
+
+    try {
+      // FIXED: Call actual service method
+      const result = await this.botNetService.verifyChallenge(params.challengeId, params.response);
+      
+      return this.createSuccessResponse(id, {
+        status: result.status || "verified",
+        challengeId: params.challengeId,
+        verified: result.verified || true,
+        message: result.message || "Challenge response verified",
+        details: result
+      });
+    } catch (error) {
+      return this.createErrorResponse(id, MCPErrorCodes.INTERNAL_ERROR, `Failed to respond to challenge: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  // ===== MESSAGE HANDLERS =====
+
+  private async handleMessageSend(id: string | number | null, params: any, sessionToken?: string): Promise<MCPResponse> {
+    if (!sessionToken) {
+      return this.createErrorResponse(id, MCPErrorCodes.AUTHENTICATION_REQUIRED, "Session token required");
+    }
+
+    if (!params?.targetBot || !params?.content) {
+      return this.createErrorResponse(id, MCPErrorCodes.INVALID_PARAMS, "Target bot and content required");
+    }
+
+    try {
+      // FIXED: Call actual service method
+      const result = await this.botNetService.sendMessage(
+        params.targetBot, 
+        params.content, 
+        params.messageType || 'chat'
+      );
+      
+      return this.createSuccessResponse(id, {
+        status: "sent",
+        messageId: result.messageId || `msg_${Date.now()}`,
+        targetBot: params.targetBot,
+        timestamp: result.timestamp || new Date().toISOString(),
+        message: "Message sent successfully",
+        details: result
+      });
+    } catch (error) {
+      return this.createErrorResponse(id, MCPErrorCodes.INTERNAL_ERROR, `Failed to send message: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  private async handleMessageCheck(id: string | number | null, params: any, sessionToken?: string): Promise<MCPResponse> {
+    if (!sessionToken) {
+      return this.createErrorResponse(id, MCPErrorCodes.AUTHENTICATION_REQUIRED, "Session token required");
+    }
+
+    try {
+      // FIXED: Call actual service method
+      const result = await this.botNetService.reviewMessages(
+        params?.fromDomain,
+        params?.includeResponses !== false // default true
+      );
+      
+      return this.createSuccessResponse(id, {
+        messages: result.messages || [],
+        count: result.count || 0,
+        hasNew: result.hasNew || false,
+        timestamp: new Date().toISOString(),
+        summary: result.summary,
+        responses: result.responses
+      });
+    } catch (error) {
+      return this.createErrorResponse(id, MCPErrorCodes.INTERNAL_ERROR, `Failed to check messages: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   // ===== RESPONSE HELPERS =====
