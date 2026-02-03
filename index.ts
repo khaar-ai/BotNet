@@ -66,6 +66,13 @@ const plugin = {
             config,
             logger: loggerAdapter
           });
+
+          // 🔐 NOTE: Internal Plugin API methods will be added when OpenClaw supports them
+          // For now, direct service access is available to OpenClaw internally via botnetService
+          // All social agent methods (requestFriend, reviewFriends, etc.) are removed from 
+          // public MCP endpoints for security - see http-server.ts
+          
+          console.log("🔐 BotNet plugin loaded with secured endpoints (no public social API)");
           
           // Create HTTP server with BotNet service
           httpServer = createBotNetServer({

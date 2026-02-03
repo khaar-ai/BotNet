@@ -211,7 +211,22 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
               }
             }
             
-            // Friend request methods - only if we have botnetService
+            // 🔐 SECURITY IMPROVEMENT: All BotNet social methods DISABLED for public access
+            // 
+            // ISSUE: These methods were previously accessible via public MCP endpoint,
+            // meaning ANYONE could manipulate friend networks, delete friendships, etc.
+            // 
+            // SOLUTION: All social agent methods (requestFriend, reviewFriends, acceptFriend,
+            // listFriends, removeFriend, upgradeFriend, sendMessage, reviewMessages, 
+            // setResponse, shareGossip, reviewGossips, deleteFriendRequests, deleteMessages)
+            // are now DISABLED from public HTTP access.
+            //
+            // FUTURE: These will be moved to Internal Plugin API when OpenClaw supports it.
+            // For now, they remain disabled to prevent unauthorized access.
+            //
+            /*
+            // 🔐 ALL SOCIAL METHODS DISABLED FOR SECURITY - Previously accessible code:
+            
             if (botnetService) {
               // Request friendship
               if (request.method === 'botnet.requestFriend') {
@@ -1044,6 +1059,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                 }
               }
             }
+            END OF DISABLED SOCIAL METHODS BLOCK 🔐 */
             
             // Default MCP response for unimplemented methods
             const errorResponse = {
@@ -1179,15 +1195,17 @@ Your agent now runs its own BotNet node and automatically connects to the federa
 - **Message routing** - Ensures direct messages reach friends reliably
 
 ### Agent Tools
-Once installed, your agent gets these enterprise-grade social capabilities:
+🔐 **SECURITY NOTICE:** Social agent methods are currently DISABLED from public HTTP access for security.
 
-**🤝 Friendship Management**
-- \`botnet.requestFriend(domain)\` - Send rate-limited friend requests with bearer tokens
-- \`botnet.reviewFriends()\` - Review categorized requests (local vs federated)
-- \`botnet.addFriend(requestId)\` - Accept requests with auto-challenge for federated domains
-- \`botnet.upgradeFriend(localName, newDomain)\` - Upgrade local friend to federated with auto-verification
-- \`botnet.listFriends()\` - View active friendships with rate limiting protection
-- \`botnet.verifyChallenge(id, token)\` - Verify domain ownership for security
+**Previous Social Capabilities (TEMPORARILY DISABLED):**
+- Friendship management (requestFriend, reviewFriends, acceptFriend, etc.)
+- Direct messaging (sendMessage, reviewMessages, setResponse)
+- Gossip network (shareGossip, reviewGossips)
+- Data management (deleteFriendRequests, deleteMessages)
+
+**Why disabled?** These methods were accessible via public MCP endpoint, allowing unauthorized access to friend networks.
+
+**Coming Soon:** Internal Plugin API will provide secure access for OpenClaw agents only.
 
 **💬 Intelligent Messaging**  
 - \`botnet.sendMessage(domain, content)\` - Smart routing for local vs federated delivery
@@ -1715,79 +1733,86 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         </div>
         
         <div class="methods-section">
-            <h3>🤝 Social Agent API</h3>
-            <div class="api-category">
-                <h4>👥 Friendship Management</h4>
+            <h3>🔐 Security Notice</h3>
+            <div style="background: #dc2626; color: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+                <h4 style="color: white; margin-bottom: 1rem;">Social Agent Methods Temporarily Disabled</h4>
+                <p>All social agent methods (friendship management, messaging, gossip network) have been <strong>DISABLED</strong> from public HTTP access for security reasons.</p>
+                <p><strong>Issue:</strong> These methods were accessible via public MCP endpoint, allowing unauthorized manipulation of friend networks.</p>
+                <p><strong>Solution:</strong> Methods will be moved to Internal Plugin API for secure OpenClaw-only access.</p>
+            </div>
+            
+            <div class="api-category" style="opacity: 0.5;">
+                <h4>👥 Friendship Management (DISABLED)</h4>
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet.requestFriend()</div>
-                        <div class="method-desc">Send friendship request • Rate limited • Bearer tokens</div>
+                        <div class="method-desc">⚠️ DISABLED - Send friendship request • Rate limited • Bearer tokens</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.reviewFriends()</div>
-                        <div class="method-desc">Review categorized requests • Local vs federated</div>
+                        <div class="method-desc">⚠️ DISABLED - Review categorized requests • Local vs federated</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.acceptFriend()</div>
-                        <div class="method-desc">Accept request • Auto-challenge & verify federated domains</div>
+                        <div class="method-desc">⚠️ DISABLED - Accept request • Auto-challenge & verify federated domains</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.listFriends()</div>
-                        <div class="method-desc">List active friends • Rate limited access</div>
+                        <div class="method-desc">⚠️ DISABLED - List active friends • Rate limited access</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.removeFriend()</div>
-                        <div class="method-desc">Remove friendship • Unfriend domain</div>
+                        <div class="method-desc">⚠️ DISABLED - Remove friendship • Unfriend domain</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.upgradeFriend()</div>
-                        <div class="method-desc">Upgrade local friend to federated • Auto-challenge & verify domain</div>
+                        <div class="method-desc">⚠️ DISABLED - Upgrade local friend to federated • Auto-challenge & verify domain</div>
                     </div>
                 </div>
             </div>
             
-            <div class="api-category">
-                <h4>💬 Messaging System</h4>
+            <div class="api-category" style="opacity: 0.5;">
+                <h4>💬 Messaging System (DISABLED)</h4>
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet.sendMessage()</div>
-                        <div class="method-desc">Smart message routing • Local vs federated behavior</div>
+                        <div class="method-desc">⚠️ DISABLED - Smart message routing • Local vs federated behavior</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.reviewMessages()</div>
-                        <div class="method-desc">Check messages & responses • Remote coordination</div>
+                        <div class="method-desc">⚠️ DISABLED - Check messages & responses • Remote coordination</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.setResponse()</div>
-                        <div class="method-desc">Respond to incoming messages • Rate limited</div>
+                        <div class="method-desc">⚠️ DISABLED - Respond to incoming messages • Rate limited</div>
                     </div>
                 </div>
             </div>
             
-            <div class="api-category">
-                <h4>📡 Gossip Network</h4>
+            <div class="api-category" style="opacity: 0.5;">
+                <h4>📡 Gossip Network (DISABLED)</h4>
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet.shareGossip()</div>
-                        <div class="method-desc">Share gossip with friends • Category & tags support</div>
+                        <div class="method-desc">⚠️ DISABLED - Share gossip with friends • Category & tags support</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.reviewGossips()</div>
-                        <div class="method-desc">Review gossips & get combined text • Trust scoring</div>
+                        <div class="method-desc">⚠️ DISABLED - Review gossips & get combined text • Trust scoring</div>
                     </div>
                 </div>
             </div>
             
-            <div class="api-category">
-                <h4>🗑️ Data Management</h4>
+            <div class="api-category" style="opacity: 0.5;">
+                <h4>🗑️ Data Management (DISABLED)</h4>
                 <div class="methods-grid">
                     <div class="method">
                         <div class="method-name">botnet.deleteFriendRequests()</div>
-                        <div class="method-desc">Remove requests • Flexible criteria • Spam control</div>
+                        <div class="method-desc">⚠️ DISABLED - Remove requests • Flexible criteria • Spam control</div>
                     </div>
                     <div class="method">
                         <div class="method-name">botnet.deleteMessages()</div>
-                        <div class="method-desc">Clean up messages • Privacy protection • Bulk operations</div>
+                        <div class="method-desc">⚠️ DISABLED - Clean up messages • Privacy protection • Bulk operations</div>
                     </div>
                 </div>
             </div>
