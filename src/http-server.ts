@@ -220,8 +220,8 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         
         body { 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #fafafa;
-            color: #1f2937;
+            background: #1a1a1a;
+            color: #e5e7eb;
             line-height: 1.6;
             min-height: 100vh;
         }
@@ -252,12 +252,12 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         .logo-text { 
             font-size: 1.75rem; 
             font-weight: 700; 
-            color: #1f2937;
+            color: #f9fafb;
         }
         
         .tagline { 
             font-size: 1.5rem; 
-            color: #6b7280; 
+            color: #d1d5db; 
             margin-bottom: 1rem;
             font-weight: 400;
         }
@@ -273,8 +273,8 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         
         /* Status */
         .status-section {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
+            background: #111827;
+            border: 1px solid #374151;
             border-radius: 12px;
             padding: 2rem;
             margin-bottom: 3rem;
@@ -285,8 +285,8 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            background: #dcfce7;
-            color: #166534;
+            background: #991b1b;
+            color: #fecaca;
             padding: 0.5rem 1rem;
             border-radius: 9999px;
             font-size: 0.875rem;
@@ -297,7 +297,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         .status-dot {
             width: 8px;
             height: 8px;
-            background: #22c55e;
+            background: #ef4444;
             border-radius: 50%;
             animation: pulse 2s infinite;
         }
@@ -310,13 +310,13 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         .node-name {
             font-size: 1.25rem;
             font-weight: 600;
-            color: #1f2937;
+            color: #f9fafb;
             margin-bottom: 0.5rem;
         }
         
         .node-domain {
             font-family: 'SF Mono', Monaco, monospace;
-            color: #6b7280;
+            color: #9ca3af;
             font-size: 0.875rem;
         }
         
@@ -330,22 +330,27 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         }
         
         .stat { 
-            background: white;
-            border: 1px solid #e5e7eb;
+            background: #111827;
+            border: 1px solid #374151;
             border-radius: 12px;
             padding: 1.5rem;
+            transition: border-color 0.2s;
+        }
+        
+        .stat:hover {
+            border-color: #dc2626;
         }
         
         .stat-value { 
             font-size: 2rem; 
             font-weight: 700; 
-            color: #1f2937; 
+            color: #ef4444; 
             margin-bottom: 0.25rem;
         }
         
         .stat-label { 
             font-size: 0.875rem; 
-            color: #6b7280; 
+            color: #9ca3af; 
             text-transform: uppercase;
             font-weight: 500;
             letter-spacing: 0.05em;
@@ -353,8 +358,8 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         
         /* Connect Section */
         .connect-section {
-            background: white;
-            border: 1px solid #e5e7eb;
+            background: #111827;
+            border: 1px solid #374151;
             border-radius: 12px;
             padding: 2rem;
             margin: 3rem 0;
@@ -363,7 +368,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         .connect-section h2 {
             font-size: 1.5rem;
             font-weight: 600;
-            color: #1f2937;
+            color: #f9fafb;
             margin-bottom: 1rem;
             text-align: center;
         }
@@ -380,7 +385,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         }
         
         .step-number {
-            background: #3b82f6;
+            background: #dc2626;
             color: white;
             width: 2rem;
             height: 2rem;
@@ -399,31 +404,31 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         
         .step-title {
             font-weight: 600;
-            color: #1f2937;
+            color: #f9fafb;
             margin-bottom: 0.25rem;
         }
         
         .step-desc {
-            color: #6b7280;
+            color: #9ca3af;
             font-size: 0.875rem;
         }
         
         .code-snippet {
-            background: #f1f5f9;
-            border: 1px solid #cbd5e1;
+            background: #0f172a;
+            border: 1px solid #1e293b;
             border-radius: 8px;
             padding: 1rem;
             font-family: 'SF Mono', Monaco, monospace;
             font-size: 0.75rem;
-            color: #374151;
+            color: #e2e8f0;
             overflow-x: auto;
             margin-top: 0.5rem;
         }
         
         /* Methods */
         .methods-section {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background: #111827;
+            border: 1px solid #374151;
             border-radius: 12px;
             padding: 2rem;
             margin: 3rem 0;
@@ -432,7 +437,7 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         .methods-section h3 {
             font-size: 1.25rem;
             font-weight: 600;
-            color: #1f2937;
+            color: #f9fafb;
             margin-bottom: 1rem;
             text-align: center;
         }
@@ -444,22 +449,27 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         }
         
         .method {
-            background: white;
-            border: 1px solid #e5e7eb;
+            background: #0f172a;
+            border: 1px solid #1e293b;
             padding: 1rem;
             border-radius: 8px;
+            transition: border-color 0.2s;
+        }
+        
+        .method:hover {
+            border-color: #dc2626;
         }
         
         .method-name {
             font-family: monospace;
-            color: #3b82f6;
+            color: #ef4444;
             font-weight: 600;
             font-size: 0.875rem;
             margin-bottom: 0.5rem;
         }
         
         .method-desc {
-            color: #6b7280;
+            color: #94a3b8;
             font-size: 0.75rem;
         }
         
@@ -467,8 +477,8 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         .footer { 
             padding: 3rem 0 2rem; 
             text-align: center; 
-            border-top: 1px solid #e5e7eb; 
-            color: #6b7280;
+            border-top: 1px solid #374151; 
+            color: #9ca3af;
             font-size: 0.875rem;
             margin-top: 4rem;
         }
@@ -478,12 +488,14 @@ function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): st
         }
         
         .footer-links a {
-            color: #3b82f6;
+            color: #ef4444;
             text-decoration: none;
             margin: 0 1rem;
+            transition: color 0.2s;
         }
         
         .footer-links a:hover {
+            color: #dc2626;
             text-decoration: underline;
         }
         
