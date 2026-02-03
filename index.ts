@@ -345,7 +345,114 @@ const plugin = {
             }
           });
 
-          console.log("🔐 BotNet Internal API registered as secure tools (10 comprehensive methods available)");
+          // 🔗 Additional Friendship Management Tools
+          api.registerTool({
+            name: "botnet_remove_friend",
+            label: "BotNet Remove Friend",
+            description: "Remove an active friendship / unfriend domain",
+            parameters: Type.Object({
+              friendDomain: Type.String({ description: "Friend domain to remove" })
+            }),
+            execute: async (toolCallId: string, params: { friendDomain: string }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.removeFriend(params.friendDomain);
+                return formatToolResult(
+                  `Removed friendship with ${params.friendDomain}: ${result.success ? 'Success' : 'Failed'}`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error removing friend: ${errorMsg}`,
+                  { error: errorMsg }
+                );
+              }
+            }
+          });
+
+          api.registerTool({
+            name: "botnet_upgrade_friend",
+            label: "BotNet Upgrade Friend",
+            description: "Upgrade local friend to federated status with domain verification",
+            parameters: Type.Object({
+              localName: Type.String({ description: "Local friend name to upgrade" }),
+              newDomain: Type.String({ description: "New federated domain for the friend" })
+            }),
+            execute: async (toolCallId: string, params: { localName: string; newDomain: string }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.upgradeFriend(params.localName, params.newDomain);
+                return formatToolResult(
+                  `Upgraded ${params.localName} to federated friend ${params.newDomain}: ${result.success ? 'Success' : 'Failed'}`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error upgrading friend: ${errorMsg}`,
+                  { error: errorMsg }
+                );
+              }
+            }
+          });
+
+          // 💬 Additional Messaging Tools
+          api.registerTool({
+            name: "botnet_set_response",
+            label: "BotNet Set Response",
+            description: "Set response to a received message",
+            parameters: Type.Object({
+              messageId: Type.String({ description: "Message ID to respond to" }),
+              responseContent: Type.String({ description: "Response content" })
+            }),
+            execute: async (toolCallId: string, params: { messageId: string; responseContent: string }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.setResponse(params.messageId, params.responseContent);
+                return formatToolResult(
+                  `Set response to message ${params.messageId}: ${result.success ? 'Success' : 'Failed'}`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error setting response: ${errorMsg}`,
+                  { error: errorMsg }
+                );
+              }
+            }
+          });
+
+          // 📡 Additional Gossip Tools
+          api.registerTool({
+            name: "botnet_share_gossip",
+            label: "BotNet Share Gossip",
+            description: "Share gossip with friends - category and tags support",
+            parameters: Type.Object({
+              content: Type.String({ description: "Gossip content to share" }),
+              category: Type.Optional(Type.String({ description: "Gossip category (default: 'general')" })),
+              tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for the gossip" }))
+            }),
+            execute: async (toolCallId: string, params: { content: string; category?: string; tags?: string[] }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.shareGossip(
+                  params.content,
+                  params.category || "general",
+                  params.tags || []
+                );
+                return formatToolResult(
+                  `Shared gossip in ${params.category || 'general'} category: ${result.success ? 'Success' : 'Failed'}`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error sharing gossip: ${errorMsg}`,
+                  { error: errorMsg }
+                );
+              }
+            }
+          });
+
+          console.log("🔐 BotNet Internal API registered as secure tools (14 comprehensive methods available)");
           
           // Create HTTP server with BotNet service
           httpServer = createBotNetServer({
