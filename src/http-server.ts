@@ -180,7 +180,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
           }
 
           // 🤝 FEDERATION METHOD: Friend Request
-          if (request.method === 'botnet.federation.friendship.request') {
+          if (request.method === 'botnet.friendship.request') {
             try {
               const { message } = request.params || {};
               
@@ -222,7 +222,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
           }
           
           // 🔐 FEDERATION METHOD: Domain Challenge Verification
-          if (request.method === 'botnet.federation.challenge.verify') {
+          if (request.method === 'botnet.challenge.verify') {
             try {
               const { challengeId, response: challengeResponse } = request.params || {};
               
@@ -268,7 +268,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
           }
           
           // 📨 FEDERATION METHOD: Message Delivery
-          if (request.method === 'botnet.federation.message.send') {
+          if (request.method === 'botnet.message.send') {
             try {
               const { toDomain, content, messageType = 'federation' } = request.params || {};
               
@@ -314,7 +314,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
           }
           
           // ✅ FEDERATION METHOD: Friendship Acceptance Notification
-          if (request.method === 'botnet.federation.friendship.notify_accepted') {
+          if (request.method === 'botnet.friendship.notify_accepted') {
             try {
               const { toDomain, friendshipId } = request.params || {};
               
@@ -360,7 +360,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
             error: {
               code: -32601,
               message: 'Method not found',
-              data: `Federation method '${request.method}' is not supported`
+              data: `BotNet method '${request.method}' is not supported`
             },
             id: request.id || null
           };
