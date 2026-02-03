@@ -392,6 +392,168 @@ const plugin = {
             }
           });
 
+          // 👋 Remove Friend Tool
+          api.registerTool({
+            name: "botnet_remove_friend",
+            label: "BotNet Remove Friend",
+            description: "Remove an active friendship / unfriend domain",
+            parameters: Type.Object({
+              friendDomain: Type.String({ description: "Domain to unfriend" }),
+              reason: Type.Optional(Type.String({ description: "Optional reason for removal" }))
+            }),
+            execute: async (toolCallId: string, params: { friendDomain: string; reason?: string }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.removeFriend(params.friendDomain, params.reason);
+                return formatToolResult(
+                  `Successfully removed friendship with ${params.friendDomain}`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error removing friend ${params.friendDomain}: ${errorMsg}`,
+                  { error: errorMsg, friendDomain: params.friendDomain }
+                );
+              }
+            }
+          });
+
+          // ⬆️ Upgrade Friend Tool
+          api.registerTool({
+            name: "botnet_upgrade_friend",
+            label: "BotNet Upgrade Friend",
+            description: "Upgrade local friend to federated status with domain verification",
+            parameters: Type.Object({
+              friendName: Type.String({ description: "Local friend name to upgrade" }),
+              targetDomain: Type.String({ description: "Target domain for federated status" })
+            }),
+            execute: async (toolCallId: string, params: { friendName: string; targetDomain: string }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.upgradeFriend(params.friendName, params.targetDomain);
+                return formatToolResult(
+                  `Friendship upgrade initiated for ${params.friendName} -> ${params.targetDomain}`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error upgrading friend ${params.friendName}: ${errorMsg}`,
+                  { error: errorMsg }
+                );
+              }
+            }
+          });
+
+          // 💬 Review Messages Tool
+          api.registerTool({
+            name: "botnet_review_messages",
+            label: "BotNet Review Messages",
+            description: "Review incoming messages (local vs federated)",
+            parameters: Type.Object({
+              limit: Type.Optional(Type.Number({ description: "Number of messages to review (default: 20)" })),
+              category: Type.Optional(Type.String({ description: "Filter by message category" })),
+              fromDomain: Type.Optional(Type.String({ description: "Filter by sender domain" }))
+            }),
+            execute: async (toolCallId: string, params: { limit?: number; category?: string; fromDomain?: string }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.reviewMessages(params.fromDomain, true);
+                return formatToolResult(
+                  `Reviewed messages from ${params.fromDomain || 'all domains'}`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error reviewing messages: ${errorMsg}`,
+                  { error: errorMsg }
+                );
+              }
+            }
+          });
+
+          // 📝 Set Response Tool
+          api.registerTool({
+            name: "botnet_set_response",
+            label: "BotNet Set Response",
+            description: "Set response to a received message",
+            parameters: Type.Object({
+              messageId: Type.String({ description: "Message ID to respond to" }),
+              response: Type.String({ description: "Response content" }),
+              responseType: Type.Optional(Type.String({ description: "Response type (acknowledgment, reply, forward)" }))
+            }),
+            execute: async (toolCallId: string, params: { messageId: string; response: string; responseType?: string }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.setResponse(params.messageId, params.response, params.responseType || 'reply');
+                return formatToolResult(
+                  `Response set for message ${params.messageId}`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error setting response to message ${params.messageId}: ${errorMsg}`,
+                  { error: errorMsg }
+                );
+              }
+            }
+          });
+
+          // 🗑️ Delete Messages Tool
+          api.registerTool({
+            name: "botnet_delete_messages",
+            label: "BotNet Delete Messages",
+            description: "Delete messages with flexible criteria",
+            parameters: Type.Object({
+              messageId: Type.Optional(Type.String({ description: "Specific message ID to delete" })),
+              sourceBot: Type.Optional(Type.String({ description: "Delete all messages from this bot/domain" })),
+              category: Type.Optional(Type.String({ description: "Delete messages by category" })),
+              olderThanDays: Type.Optional(Type.Number({ description: "Delete messages older than N days" })),
+              includeAnonymous: Type.Optional(Type.Boolean({ description: "Include anonymous messages in deletion" }))
+            }),
+            execute: async (toolCallId: string, params: any, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.deleteMessagingMessages(params);
+                return formatToolResult(
+                  `Deleted ${result.deletedCount} messages matching criteria`,
+                  result
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error deleting messages: ${errorMsg}`,
+                  { error: errorMsg }
+                );
+              }
+            }
+          });
+
+          // ⚕️ Health Check Tool
+          api.registerTool({
+            name: "botnet_get_health",
+            label: "BotNet Get Health",
+            description: "Get BotNet node health status and diagnostics",
+            parameters: Type.Object({
+              includeDetailedStats: Type.Optional(Type.Boolean({ description: "Include detailed statistics" }))
+            }),
+            execute: async (toolCallId: string, params: { includeDetailedStats?: boolean }, signal?: AbortSignal) => {
+              try {
+                const health = await botnetService!.getHealthStatus();
+                const statusEmoji = health.status === 'healthy' ? '🟢' : health.status === 'warning' ? '🟡' : '🔴';
+                const summary = health.status === 'healthy' ? 'All systems operational' : 'System issues detected';
+                return formatToolResult(
+                  `${statusEmoji} BotNet Health: ${health.status.toUpperCase()} - ${summary}`,
+                  health
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `🔴 Error getting health status: ${errorMsg}`,
+                  { error: errorMsg, status: 'error' }
+                );
+              }
+            }
+          });
+
           // Create HTTP server with TokenService
           httpServer = createBotNetServer({
             config,
