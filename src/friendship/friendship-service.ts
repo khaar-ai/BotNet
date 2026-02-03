@@ -196,7 +196,8 @@ export class FriendshipService {
     const metadata = JSON.stringify({ 
       message,
       direction: 'outgoing',
-      fromDomain
+      fromDomain,
+      requestType: targetType
     });
     
     const result = stmt.run(toDomain, metadata);
@@ -253,9 +254,11 @@ export class FriendshipService {
         VALUES (?, 'active', ?)
       `);
       
+      const requestType = this.determineRequestType(fromDomain);
       const metadata = JSON.stringify({ 
         direction: 'incoming',
-        acceptedBy: toDomain
+        acceptedBy: toDomain,
+        requestType
       });
       
       const result = stmt.run(fromDomain, metadata);
@@ -393,8 +396,9 @@ export class FriendshipService {
     }
     
     const metadata = JSON.parse(friendship.metadata || '{}');
+    const requestType = metadata.requestType || this.determineRequestType(friendship.friend_domain);
     
-    if (metadata.requestType !== 'federated') {
+    if (requestType !== 'federated') {
       throw new Error('Domain challenge only applicable to federated requests');
     }
     
@@ -481,15 +485,16 @@ export class FriendshipService {
       throw new Error('Friendship request not found');
     }
     
-    if (friendship.status !== 'pending') {
-      throw new Error(`Cannot add friend - request status is ${friendship.status}`);
-    }
-    
     const metadata = JSON.parse(friendship.metadata || '{}');
     const requestType = metadata.requestType || this.determineRequestType(friendship.friend_domain);
     
+    // Handle different friendship statuses and types
     if (requestType === 'local') {
-      // Local bot - immediately accept
+      // Local bot - only accept if pending
+      if (friendship.status !== 'pending') {
+        throw new Error(`Cannot accept local friend - request status is ${friendship.status}`);
+      }
+      
       const updatedMetadata = {
         ...metadata,
         acceptedAt: new Date().toISOString(),
@@ -513,7 +518,7 @@ export class FriendshipService {
         friendshipId: requestId,
         message: 'Local friend request accepted immediately'
       };
-    } else {
+    } else if (requestType === 'federated') {
       // Federated domain - handle challenge process
       if (friendship.status === 'pending') {
         // First call - initiate challenge
@@ -542,9 +547,13 @@ export class FriendshipService {
             message: 'Challenge verification failed - friendship rejected'
           };
         }
+      } else if (friendship.status === 'challenging' && !challengeResponse) {
+        throw new Error('Challenge response required for federated domain in challenging state');
       } else {
-        throw new Error('Invalid federated friendship state or missing challenge response');
+        throw new Error(`Invalid friendship state: ${friendship.status} for federated domain`);
       }
+    } else {
+      throw new Error(`Invalid request type: ${requestType}`);
     }
   }
 
