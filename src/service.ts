@@ -246,6 +246,20 @@ export class BotNetService {
     return await this.friendshipService.verifyDomainChallenge(challengeId, response);
   }
 
+  /**
+   * Delete friend requests by criteria
+   */
+  async deleteFriendRequests(criteria: any): Promise<any> {
+    return await this.friendshipService.deleteFriendRequests(criteria);
+  }
+
+  /**
+   * Delete gossip messages by criteria
+   */
+  async deleteMessages(criteria: any): Promise<any> {
+    return await this.gossipService.deleteMessages(criteria);
+  }
+
   async shutdown() {
     this.options.logger.info("Shutting down BotNet service");
     // Cleanup tasks if needed

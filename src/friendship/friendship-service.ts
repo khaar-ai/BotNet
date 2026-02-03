@@ -470,6 +470,65 @@ export class FriendshipService {
   }
 
   /**
+   * Delete friendship request(s) by ID or criteria
+   */
+  async deleteFriendRequests(options: {
+    requestId?: string;
+    fromDomain?: string;
+    status?: string;
+    olderThanDays?: number;
+  }): Promise<{ deletedCount: number; message: string }> {
+    let whereClause = '1=1';
+    let params: any[] = [];
+    
+    if (options.requestId) {
+      whereClause += ' AND id = ?';
+      params.push(options.requestId);
+    }
+    
+    if (options.fromDomain) {
+      whereClause += ' AND friend_domain = ?';
+      params.push(options.fromDomain);
+    }
+    
+    if (options.status) {
+      whereClause += ' AND status = ?';
+      params.push(options.status);
+    }
+    
+    if (options.olderThanDays) {
+      whereClause += ' AND created_at < datetime("now", "-" || ? || " days")';
+      params.push(options.olderThanDays);
+    }
+    
+    // Get count before deletion for logging
+    const countStmt = this.database.prepare(`
+      SELECT COUNT(*) as count FROM friendships WHERE ${whereClause}
+    `);
+    const countResult = countStmt.get(...params) as { count: number };
+    
+    if (countResult.count === 0) {
+      return { deletedCount: 0, message: 'No matching friend requests found to delete' };
+    }
+    
+    // Delete matching records
+    const deleteStmt = this.database.prepare(`
+      DELETE FROM friendships WHERE ${whereClause}
+    `);
+    const result = deleteStmt.run(...params);
+    
+    this.logger.info('🗑️ Friend requests deleted', {
+      deletedCount: result.changes,
+      criteria: options
+    });
+    
+    return {
+      deletedCount: result.changes || 0,
+      message: `Deleted ${result.changes} friend request(s)`
+    };
+  }
+
+  /**
    * Block a domain (prevent future friendship requests)
    */
   async blockBot(fromDomain: string, targetDomain: string): Promise<boolean> {

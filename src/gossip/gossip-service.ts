@@ -254,4 +254,87 @@ export class GossipService {
     
     return messageId;
   }
+
+  /**
+   * Delete gossip messages by various criteria
+   */
+  async deleteMessages(options: {
+    messageId?: string;
+    sourceBot?: string;
+    category?: string;
+    olderThanDays?: number;
+    includeAnonymous?: boolean;
+  }): Promise<{ deletedCount: number; deletedAnonymous: number; message: string }> {
+    let whereClause = '1=1';
+    let params: any[] = [];
+    
+    if (options.messageId) {
+      whereClause += ' AND message_id = ?';
+      params.push(options.messageId);
+    }
+    
+    if (options.sourceBot) {
+      whereClause += ' AND source_bot_id = ?';
+      params.push(options.sourceBot);
+    }
+    
+    if (options.category) {
+      whereClause += ' AND category = ?';
+      params.push(options.category);
+    }
+    
+    if (options.olderThanDays) {
+      whereClause += ' AND created_at < datetime("now", "-" || ? || " days")';
+      params.push(options.olderThanDays);
+    }
+    
+    // Delete from gossip_messages table
+    const deleteMainStmt = this.db.prepare(`
+      DELETE FROM gossip_messages WHERE ${whereClause}
+    `);
+    const mainResult = deleteMainStmt.run(...params);
+    
+    let anonymousDeleted = 0;
+    
+    // Delete from anonymous_gossip table if requested
+    if (options.includeAnonymous) {
+      let anonWhereClause = '1=1';
+      let anonParams: any[] = [];
+      
+      if (options.messageId) {
+        anonWhereClause += ' AND message_id = ?';
+        anonParams.push(options.messageId);
+      }
+      
+      if (options.category) {
+        anonWhereClause += ' AND category = ?';
+        anonParams.push(options.category);
+      }
+      
+      if (options.olderThanDays) {
+        anonWhereClause += ' AND created_at < datetime("now", "-" || ? || " days")';
+        anonParams.push(options.olderThanDays);
+      }
+      
+      const deleteAnonStmt = this.db.prepare(`
+        DELETE FROM anonymous_gossip WHERE ${anonWhereClause}
+      `);
+      const anonResult = deleteAnonStmt.run(...anonParams);
+      anonymousDeleted = anonResult.changes || 0;
+    }
+    
+    this.logger.info('🗑️ Gossip messages deleted', {
+      deletedCount: mainResult.changes,
+      deletedAnonymous: anonymousDeleted,
+      criteria: options
+    });
+    
+    const totalDeleted = (mainResult.changes || 0) + anonymousDeleted;
+    
+    return {
+      deletedCount: mainResult.changes || 0,
+      deletedAnonymous: anonymousDeleted,
+      message: `Deleted ${totalDeleted} message(s) (${mainResult.changes} regular, ${anonymousDeleted} anonymous)`
+    };
+  }
 }

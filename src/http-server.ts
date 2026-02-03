@@ -387,6 +387,102 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                   return;
                 }
               }
+
+              // Delete friend requests
+              if (request.method === 'botnet.deleteFriendRequests') {
+                try {
+                  const { requestId, fromDomain, status, olderThanDays } = request.params || {};
+                  
+                  const criteria = {
+                    ...(requestId && { requestId }),
+                    ...(fromDomain && { fromDomain }),
+                    ...(status && { status }),
+                    ...(olderThanDays && { olderThanDays })
+                  };
+                  
+                  if (Object.keys(criteria).length === 0) {
+                    throw new Error('At least one deletion criteria required (requestId, fromDomain, status, or olderThanDays)');
+                  }
+                  
+                  const result = await botnetService.deleteFriendRequests(criteria);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      deletedCount: result.deletedCount,
+                      message: result.message,
+                      criteria: criteria
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to delete friend requests'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Delete gossip messages
+              if (request.method === 'botnet.deleteMessages') {
+                try {
+                  const { messageId, sourceBot, category, olderThanDays, includeAnonymous } = request.params || {};
+                  
+                  const criteria = {
+                    ...(messageId && { messageId }),
+                    ...(sourceBot && { sourceBot }),
+                    ...(category && { category }),
+                    ...(olderThanDays && { olderThanDays }),
+                    ...(includeAnonymous !== undefined && { includeAnonymous })
+                  };
+                  
+                  if (Object.keys(criteria).length === 0) {
+                    throw new Error('At least one deletion criteria required (messageId, sourceBot, category, olderThanDays, or includeAnonymous)');
+                  }
+                  
+                  const result = await botnetService.deleteMessages(criteria);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      deletedCount: result.deletedCount,
+                      deletedAnonymous: result.deletedAnonymous,
+                      message: result.message,
+                      criteria: criteria
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to delete messages'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
             }
             
             // Default MCP response for unimplemented methods
