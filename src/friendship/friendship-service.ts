@@ -24,7 +24,7 @@ export interface FriendshipRequest {
   createdAt: string;
   status: 'pending' | 'accepted' | 'rejected' | 'challenging' | 'challenge_failed';
   bearerToken?: string;
-  requestType: 'local' | 'federated'; // local = no dots, federated = botnet.*
+  requestType: 'local' | 'federated' | 'invalid'; // local = no dots, federated = botnet.*, invalid = dots without botnet.
   lastChallengeAt?: string;
   challengeAttempts: number;
 }
@@ -53,16 +53,17 @@ export class FriendshipService {
 
   /**
    * Determine if a domain is local (no dots) or federated (botnet.*)
+   * Domains with dots but without 'botnet.' prefix are rejected
    */
-  private determineRequestType(fromDomain: string): 'local' | 'federated' {
+  private determineRequestType(fromDomain: string): 'local' | 'federated' | 'invalid' {
     if (!fromDomain.includes('.')) {
       return 'local'; // Names like "TestBot", "Alice", "DragonHelper"
     }
     if (fromDomain.startsWith('botnet.')) {
       return 'federated'; // Domains like "botnet.example.com"
     }
-    // For now, treat other domains as federated too
-    return 'federated';
+    // Domains with dots but without botnet. prefix are invalid for federation
+    return 'invalid';
   }
 
   /**
@@ -104,6 +105,17 @@ export class FriendshipService {
    * Create a pending friendship request (sent to another domain)
    */
   async sendFriendshipRequest(fromDomain: string, toDomain: string, message?: string): Promise<FriendshipRequest> {
+    // Validate target domain for federation
+    const targetType = this.determineRequestType(toDomain);
+    if (targetType === 'invalid') {
+      this.logger.warn('🚫 Cannot send friend request to invalid domain', {
+        fromDomain,
+        toDomain,
+        reason: 'Target domain has dots but missing required botnet. prefix'
+      });
+      throw new Error(`Invalid target domain: ${toDomain}. BotNet federation requires 'botnet.' prefix for domains.`);
+    }
+    
     // Check if friendship already exists
     const existing = this.database.prepare(`
       SELECT * FROM friendships 
@@ -731,8 +743,18 @@ export class FriendshipService {
       throw new Error(`Friendship with ${fromDomain} already exists (status: ${existing.status})`);
     }
 
-    // Determine request type and generate bearer token
+    // Determine request type and validate domain
     const requestType = this.determineRequestType(fromDomain);
+    
+    // Reject invalid domains (has dots but no botnet. prefix)
+    if (requestType === 'invalid') {
+      this.logger.warn('🚫 Rejected invalid domain for federation', {
+        fromDomain,
+        reason: 'Domain has dots but missing required botnet. prefix'
+      });
+      throw new Error(`Invalid domain for BotNet federation: ${fromDomain}. Domains must use 'botnet.' prefix or be simple local names.`);
+    }
+    
     const bearerToken = this.generateBearerToken();
     
     // Create pending incoming friendship

@@ -44,15 +44,17 @@ export class MessagingService {
 
   /**
    * Determine if a domain is local (no dots) or federated (botnet.*)
+   * Domains with dots but without 'botnet.' prefix are invalid
    */
-  private determineNodeType(domain: string): 'local' | 'federated' {
+  private determineNodeType(domain: string): 'local' | 'federated' | 'invalid' {
     if (!domain.includes('.')) {
       return 'local'; // Names like "TestBot", "Alice"
     }
     if (domain.startsWith('botnet.')) {
       return 'federated'; // Domains like "botnet.example.com"
     }
-    return 'federated'; // Treat other domains as federated too
+    // Domains with dots but without botnet. prefix are invalid for federation
+    return 'invalid';
   }
 
   /**
@@ -71,9 +73,18 @@ export class MessagingService {
       throw new Error('Rate limit exceeded for message sending. Please try again later.');
     }
 
+    // Validate target domain
+    const toNodeType = this.determineNodeType(toDomain);
+    if (toNodeType === 'invalid') {
+      this.logger.warn('🚫 Cannot send message to invalid domain', {
+        toDomain,
+        reason: 'Target domain has dots but missing required botnet. prefix'
+      });
+      throw new Error(`Invalid target domain: ${toDomain}. BotNet messaging requires 'botnet.' prefix for domains.`);
+    }
+
     const messageId = uuidv4();
     const fromDomain = this.config.botDomain;
-    const toNodeType = this.determineNodeType(toDomain);
     const fromNodeType = this.determineNodeType(fromDomain);
 
     // Store message locally
@@ -336,8 +347,17 @@ export class MessagingService {
       throw new Error('Rate limit exceeded for receiving messages. Please try again later.');
     }
 
-    const messageId = uuidv4();
+    // Validate source domain
     const nodeType = this.determineNodeType(fromDomain);
+    if (nodeType === 'invalid') {
+      this.logger.warn('🚫 Rejected message from invalid domain', {
+        fromDomain,
+        reason: 'Source domain has dots but missing required botnet. prefix'
+      });
+      throw new Error(`Invalid source domain: ${fromDomain}. BotNet requires 'botnet.' prefix for federation domains.`);
+    }
+
+    const messageId = uuidv4();
     
     // Store incoming message
     const insertStmt = this.database.prepare(`
