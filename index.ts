@@ -235,6 +235,44 @@ const plugin = {
             }
           });
 
+          // 🤝 Accept Friend Request Tool (FIXED - No longer placeholder!)
+          api.registerTool({
+            name: "botnet_accept_friend_request",
+            label: "BotNet Accept Friend Request",
+            description: "Accept a pending friend request by request ID",
+            parameters: Type.Object({
+              requestId: Type.String({ description: "Friend request ID to accept" }),
+              challengeResponse: Type.Optional(Type.String({ description: "Challenge response for federated domains" }))
+            }),
+            execute: async (toolCallId: string, params: { requestId: string; challengeResponse?: string }, signal?: AbortSignal) => {
+              try {
+                const result = await botnetService!.acceptFriend(params.requestId, params.challengeResponse);
+                
+                return formatToolResult(
+                  `Friend request ${params.requestId} accepted successfully!`,
+                  {
+                    status: result.status,
+                    friendshipId: result.friendshipId,
+                    message: result.message,
+                    nextSteps: result.challengeId ? [
+                      `Challenge initiated with ID: ${result.challengeId}`,
+                      "Domain verification in progress"
+                    ] : [
+                      "Friendship is now active",
+                      "Cross-domain communication enabled"
+                    ]
+                  }
+                );
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                return formatToolResult(
+                  `Error accepting friend request ${params.requestId}: ${errorMsg}`,
+                  { error: errorMsg, requestId: params.requestId }
+                );
+              }
+            }
+          });
+
           // 💬 Enhanced Messaging Tools (Session Token Required)
           api.registerTool({
             name: "botnet_send_message",
