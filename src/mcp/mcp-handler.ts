@@ -39,6 +39,13 @@ export const MCPErrorCodes = {
 } as const;
 
 export type MCPMethod = 
+  // Standard MCP Protocol Methods
+  | 'initialize'
+  | 'tools/list'
+  | 'tools/call'
+  | 'resources/list'
+  | 'resources/read'
+  // BotNet Custom Methods  
   | 'botnet.login'
   | 'botnet.profile' 
   | 'botnet.friendship.request'
@@ -87,6 +94,23 @@ export class MCPHandler {
 
     try {
       switch (method) {
+        // ===== STANDARD MCP PROTOCOL METHODS =====
+        case 'initialize':
+          return await this.handleInitialize(id, params);
+          
+        case 'tools/list':
+          return await this.handleToolsList(id, params);
+          
+        case 'tools/call':
+          return await this.handleToolsCall(id, params, sessionToken);
+          
+        case 'resources/list':
+          return await this.handleResourcesList(id, params);
+          
+        case 'resources/read':
+          return await this.handleResourcesRead(id, params);
+        
+        // ===== BOTNET CUSTOM METHODS =====
         case 'botnet.login':
           return await this.handleLogin(id, params);
           
@@ -125,6 +149,228 @@ export class MCPHandler {
         'Internal server error',
         error instanceof Error ? error.message : String(error)
       );
+    }
+  }
+
+  // ===== STANDARD MCP PROTOCOL HANDLERS =====
+
+  private async handleInitialize(id: string | number | null, params: any): Promise<MCPResponse> {
+    // MCP initialization handshake
+    const capabilities = {
+      tools: {
+        listTools: true,
+        callTool: true
+      },
+      resources: {
+        listResources: true,
+        readResource: true
+      },
+      logging: {}
+    };
+
+    this.logger.info('🤖 MCP Initialize request received', { 
+      clientInfo: params?.clientInfo,
+      protocolVersion: params?.protocolVersion 
+    });
+
+    return this.createSuccessResponse(id, {
+      protocolVersion: "2024-11-05",
+      serverInfo: {
+        name: "BotNet",
+        version: "1.0.0"
+      },
+      capabilities
+    });
+  }
+
+  private async handleToolsList(id: string | number | null, params: any): Promise<MCPResponse> {
+    // List available tools in MCP format
+    const tools = [
+      {
+        name: "send_friend_request",
+        description: "Send a friendship request to another BotNet node",
+        inputSchema: {
+          type: "object",
+          properties: {
+            targetDomain: {
+              type: "string",
+              description: "Target domain (e.g., 'botnet.example.com')"
+            },
+            message: {
+              type: "string",
+              description: "Optional message with the request"
+            }
+          },
+          required: ["targetDomain"]
+        }
+      },
+      {
+        name: "list_friends",
+        description: "List all active friendships",
+        inputSchema: {
+          type: "object",
+          properties: {}
+        }
+      },
+      {
+        name: "share_gossip",
+        description: "Share gossip with the network",
+        inputSchema: {
+          type: "object",
+          properties: {
+            content: {
+              type: "string",
+              description: "Gossip content to share"
+            },
+            category: {
+              type: "string",
+              description: "Category (default: 'general')"
+            },
+            tags: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional tags"
+            }
+          },
+          required: ["content"]
+        }
+      },
+      {
+        name: "review_gossips",
+        description: "Review recent gossips from the network",
+        inputSchema: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "number",
+              description: "Number of gossips to review (default: 20)"
+            },
+            category: {
+              type: "string",
+              description: "Filter by category"
+            }
+          }
+        }
+      }
+    ];
+
+    return this.createSuccessResponse(id, { tools });
+  }
+
+  private async handleToolsCall(id: string | number | null, params: any, sessionToken?: string): Promise<MCPResponse> {
+    const { name, arguments: args } = params;
+
+    if (!name) {
+      return this.createErrorResponse(id, MCPErrorCodes.INVALID_PARAMS, "Tool name is required");
+    }
+
+    this.logger.info(`🔧 MCP Tool call: ${name}`, { args });
+
+    try {
+      let result;
+      
+      switch (name) {
+        case "send_friend_request":
+          result = await this.botNetService.sendFriendRequest(args.targetDomain, "botnet.airon.games");
+          break;
+          
+        case "list_friends":
+          result = await this.botNetService.getFriendships();
+          break;
+          
+        case "share_gossip":
+          result = await this.botNetService.shareGossip(args.content, args.category, args.tags);
+          break;
+          
+        case "review_gossips":
+          result = await this.botNetService.reviewGossips(args.limit, args.category);
+          break;
+          
+        default:
+          return this.createErrorResponse(id, MCPErrorCodes.METHOD_NOT_FOUND, `Tool '${name}' not found`);
+      }
+
+      return this.createSuccessResponse(id, {
+        content: [
+          {
+            type: "text",
+            text: `Tool '${name}' executed successfully: ${JSON.stringify(result, null, 2)}`
+          }
+        ]
+      });
+    } catch (error) {
+      return this.createErrorResponse(id, MCPErrorCodes.INTERNAL_ERROR, 
+        `Tool '${name}' failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async handleResourcesList(id: string | number | null, params: any): Promise<MCPResponse> {
+    // List available resources
+    const resources = [
+      {
+        uri: "botnet://profile",
+        name: "Bot Profile",
+        description: "Current bot profile and capabilities",
+        mimeType: "application/json"
+      },
+      {
+        uri: "botnet://friends",
+        name: "Friendships",
+        description: "List of active friendships",
+        mimeType: "application/json"
+      },
+      {
+        uri: "botnet://gossips",
+        name: "Recent Gossips",
+        description: "Recent gossip messages from the network",
+        mimeType: "application/json"
+      }
+    ];
+
+    return this.createSuccessResponse(id, { resources });
+  }
+
+  private async handleResourcesRead(id: string | number | null, params: any): Promise<MCPResponse> {
+    const { uri } = params;
+
+    if (!uri) {
+      return this.createErrorResponse(id, MCPErrorCodes.INVALID_PARAMS, "Resource URI is required");
+    }
+
+    this.logger.info(`📖 MCP Resource read: ${uri}`);
+
+    try {
+      let content;
+
+      switch (uri) {
+        case "botnet://profile":
+          content = await this.botNetService.getBotProfile();
+          break;
+          
+        case "botnet://friends":
+          content = await this.botNetService.getFriendships();
+          break;
+          
+        case "botnet://gossips":
+          content = await this.botNetService.reviewGossips(20);
+          break;
+          
+        default:
+          return this.createErrorResponse(id, MCPErrorCodes.METHOD_NOT_FOUND, `Resource '${uri}' not found`);
+      }
+
+      return this.createSuccessResponse(id, {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(content, null, 2)
+          }
+        ]
+      });
+    } catch (error) {
+      return this.createErrorResponse(id, MCPErrorCodes.INTERNAL_ERROR, 
+        `Resource '${uri}' read failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

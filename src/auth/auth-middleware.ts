@@ -10,6 +10,13 @@ export enum AuthLevel {
 
 // Method authentication requirements mapping
 export const methodAuthLevels: Record<string, AuthLevel> = {
+  // ===== STANDARD MCP PROTOCOL METHODS (Public - no auth required) =====
+  'initialize': AuthLevel.NONE,
+  'tools/list': AuthLevel.NONE,
+  'tools/call': AuthLevel.NONE,
+  'resources/list': AuthLevel.NONE,
+  'resources/read': AuthLevel.NONE,
+
   // ===== TIER 1: Public methods (no authentication) =====
   'botnet.health': AuthLevel.NONE,
   'botnet.profile': AuthLevel.NONE,
