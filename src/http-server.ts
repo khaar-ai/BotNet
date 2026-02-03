@@ -404,7 +404,8 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                     throw new Error('At least one deletion criteria required (requestId, fromDomain, status, or olderThanDays)');
                   }
                   
-                  const result = await botnetService.deleteFriendRequests(criteria);
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.deleteFriendRequests(criteria, Array.isArray(clientIP) ? clientIP[0] : clientIP);
                   
                   const response = {
                     jsonrpc: '2.0',
@@ -435,24 +436,35 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                 }
               }
 
-              // Delete gossip messages
+              // Delete messages (both gossip and messaging)
               if (request.method === 'botnet.deleteMessages') {
                 try {
-                  const { messageId, sourceBot, category, olderThanDays, includeAnonymous } = request.params || {};
+                  const { messageId, sourceBot, category, olderThanDays, includeAnonymous, messageType } = request.params || {};
                   
                   const criteria = {
                     ...(messageId && { messageId }),
                     ...(sourceBot && { sourceBot }),
                     ...(category && { category }),
                     ...(olderThanDays && { olderThanDays }),
-                    ...(includeAnonymous !== undefined && { includeAnonymous })
+                    ...(includeAnonymous !== undefined && { includeAnonymous }),
+                    ...(messageType && { messageType })
                   };
                   
                   if (Object.keys(criteria).length === 0) {
-                    throw new Error('At least one deletion criteria required (messageId, sourceBot, category, olderThanDays, or includeAnonymous)');
+                    throw new Error('At least one deletion criteria required');
                   }
                   
-                  const result = await botnetService.deleteMessages(criteria);
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  
+                  // Try both gossip and messaging deletion
+                  let result;
+                  if (messageType === 'messaging' || criteria.toDomain || criteria.fromDomain) {
+                    // Use messaging service for inter-node messages
+                    result = await botnetService.deleteMessagingMessages(criteria, Array.isArray(clientIP) ? clientIP[0] : clientIP);
+                  } else {
+                    // Use gossip service for gossip messages
+                    result = await botnetService.deleteMessages(criteria);
+                  }
                   
                   const response = {
                     jsonrpc: '2.0',
@@ -474,6 +486,195 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
                     error: {
                       code: -32603,
                       message: error instanceof Error ? error.message : 'Failed to delete messages'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // List friends
+              if (request.method === 'botnet.listFriends') {
+                try {
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.listFriends(Array.isArray(clientIP) ? clientIP[0] : clientIP);
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      friends: result.map((friend: any) => ({
+                        domain: friend.friend_domain,
+                        status: friend.status,
+                        since: friend.created_at,
+                        lastSeen: friend.updated_at
+                      })),
+                      count: result.length
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to list friends'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Send message
+              if (request.method === 'botnet.sendMessage') {
+                try {
+                  const { toDomain, content, messageType } = request.params || {};
+                  if (!toDomain || !content) {
+                    throw new Error('toDomain and content parameters required');
+                  }
+                  
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.sendMessage(
+                    toDomain, 
+                    content, 
+                    messageType || 'chat', 
+                    Array.isArray(clientIP) ? clientIP[0] : clientIP
+                  );
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      messageId: result.messageId,
+                      status: result.status,
+                      toDomain: toDomain,
+                      requiresManualCheck: result.requiresManualCheck || false,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to send message'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Review messages
+              if (request.method === 'botnet.reviewMessages') {
+                try {
+                  const { domain, includeResponses } = request.params || {};
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.reviewMessages(
+                    domain, 
+                    includeResponses !== false, 
+                    Array.isArray(clientIP) ? clientIP[0] : clientIP
+                  );
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      messages: result.messages.map((msg: any) => ({
+                        id: msg.message_id,
+                        from: msg.from_domain,
+                        to: msg.to_domain,
+                        content: msg.content,
+                        type: msg.message_type,
+                        status: msg.status,
+                        timestamp: msg.created_at
+                      })),
+                      responses: result.responses?.map((resp: any) => ({
+                        id: resp.response_id,
+                        messageId: resp.message_id,
+                        from: resp.from_domain,
+                        content: resp.response_content,
+                        timestamp: resp.created_at
+                      })) || [],
+                      requiresRemoteCheck: result.requiresRemoteCheck || false,
+                      summary: {
+                        messageCount: result.messages.length,
+                        responseCount: result.responses?.length || 0
+                      }
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to review messages'
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(errorResponse, null, 2));
+                  return;
+                }
+              }
+
+              // Set response
+              if (request.method === 'botnet.setResponse') {
+                try {
+                  const { messageId, responseContent } = request.params || {};
+                  if (!messageId || !responseContent) {
+                    throw new Error('messageId and responseContent parameters required');
+                  }
+                  
+                  const clientIP = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+                  const result = await botnetService.setResponse(
+                    messageId, 
+                    responseContent, 
+                    Array.isArray(clientIP) ? clientIP[0] : clientIP
+                  );
+                  
+                  const response = {
+                    jsonrpc: '2.0',
+                    result: {
+                      responseId: result.responseId,
+                      status: result.status,
+                      messageId: messageId,
+                      timestamp: new Date().toISOString()
+                    },
+                    id: request.id
+                  };
+                  
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify(response, null, 2));
+                  return;
+                } catch (error) {
+                  const errorResponse = {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: error instanceof Error ? error.message : 'Failed to set response'
                     },
                     id: request.id
                   };

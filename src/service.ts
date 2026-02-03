@@ -5,6 +5,8 @@ import type { Logger } from "./logger.js";
 import { AuthService } from "./auth/auth-service.js";
 import { FriendshipService } from "./friendship/friendship-service.js";
 import { GossipService } from "./gossip/gossip-service.js";
+import { MessagingService } from "./messaging/messaging-service.js";
+import { RateLimiter } from "./rate-limiter.js";
 interface BotNetServiceOptions {
   database: Database.Database;
   config: BotNetConfig;
@@ -15,6 +17,8 @@ export class BotNetService {
   private authService: AuthService;
   private friendshipService: FriendshipService;
   private gossipService: GossipService;
+  private messagingService: MessagingService;
+  private rateLimiter: RateLimiter;
   
   constructor(private options: BotNetServiceOptions) {
     const { database, config, logger } = options;
@@ -22,6 +26,8 @@ export class BotNetService {
     this.authService = new AuthService(logger.child("auth"));
     this.friendshipService = new FriendshipService(database, config, logger.child("friendship"));
     this.gossipService = new GossipService(database, config, logger.child("gossip"));
+    this.messagingService = new MessagingService(database, config, logger.child("messaging"));
+    this.rateLimiter = new RateLimiter(logger.child("rateLimiter"), 60 * 1000, 10); // Universal rate limiter
   }
   
   async getBotProfile() {
@@ -249,8 +255,8 @@ export class BotNetService {
   /**
    * Delete friend requests by criteria
    */
-  async deleteFriendRequests(criteria: any): Promise<any> {
-    return await this.friendshipService.deleteFriendRequests(criteria);
+  async deleteFriendRequests(criteria: any, clientIP?: string): Promise<any> {
+    return await this.friendshipService.deleteFriendRequests(criteria, clientIP);
   }
 
   /**
@@ -258,6 +264,41 @@ export class BotNetService {
    */
   async deleteMessages(criteria: any): Promise<any> {
     return await this.gossipService.deleteMessages(criteria);
+  }
+
+  /**
+   * List active friends
+   */
+  async listFriends(clientIP?: string): Promise<any> {
+    return await this.friendshipService.listFriends(clientIP);
+  }
+
+  /**
+   * Send message to another domain/bot
+   */
+  async sendMessage(toDomain: string, content: string, messageType: string = 'chat', clientIP?: string): Promise<any> {
+    return await this.messagingService.sendMessage(toDomain, content, messageType, clientIP);
+  }
+
+  /**
+   * Review messages (different behavior for local vs federated)
+   */
+  async reviewMessages(domain?: string, includeResponses: boolean = true, clientIP?: string): Promise<any> {
+    return await this.messagingService.reviewMessages(domain, includeResponses, clientIP);
+  }
+
+  /**
+   * Set response to a received message
+   */
+  async setResponse(messageId: string, responseContent: string, clientIP?: string): Promise<any> {
+    return await this.messagingService.setResponse(messageId, responseContent, clientIP);
+  }
+
+  /**
+   * Delete messages by criteria (messaging service)
+   */
+  async deleteMessagingMessages(criteria: any, clientIP?: string): Promise<any> {
+    return await this.messagingService.deleteMessages(criteria, clientIP);
   }
 
   async shutdown() {

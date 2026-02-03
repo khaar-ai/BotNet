@@ -3,6 +3,7 @@
 
 import type Database from "better-sqlite3";
 import type { BotNetConfig } from "../../index.js";
+import { RateLimiter } from "../rate-limiter.js";
 
 export interface Friendship {
   id: string;
@@ -38,14 +39,13 @@ export class FriendshipService {
   
   private friendships: Map<string, Friendship> = new Map();
   private pendingRequests: Map<string, FriendshipRequest> = new Map();
-  private rateLimitMap: Map<string, { count: number; resetAt: number }> = new Map();
-  private readonly RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-  private readonly RATE_LIMIT_MAX = 5; // 5 requests per minute per IP/domain
+  private rateLimiter: RateLimiter;
 
   constructor(database: Database.Database, config: BotNetConfig, logger: FriendshipService['logger']) {
     this.database = database;
     this.config = config;
     this.logger = logger;
+    this.rateLimiter = new RateLimiter(logger, 60 * 1000, 5); // 5 friendship ops per minute
   }
 
   /**
@@ -72,25 +72,29 @@ export class FriendshipService {
   }
 
   /**
-   * Check rate limit for domain/IP
+   * List active friends (with rate limiting)
    */
-  private checkRateLimit(identifier: string): boolean {
-    const now = Date.now();
-    const rateLimitData = this.rateLimitMap.get(identifier);
-
-    if (!rateLimitData || now > rateLimitData.resetAt) {
-      // Reset or first request
-      this.rateLimitMap.set(identifier, { count: 1, resetAt: now + this.RATE_LIMIT_WINDOW });
-      return true;
+  async listFriends(clientIP?: string): Promise<Friendship[]> {
+    // Rate limiting
+    const rateLimitKey = clientIP || this.config.botDomain;
+    if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'listFriends')) {
+      throw new Error('Rate limit exceeded for listing friends. Please try again later.');
     }
 
-    if (rateLimitData.count >= this.RATE_LIMIT_MAX) {
-      this.logger.warn('🚫 Rate limit exceeded', { identifier, count: rateLimitData.count });
-      return false;
-    }
-
-    rateLimitData.count++;
-    return true;
+    const stmt = this.database.prepare(`
+      SELECT * FROM friendships 
+      WHERE status = 'active'
+      ORDER BY updated_at DESC
+    `);
+    
+    const friendships = stmt.all() as Friendship[];
+    
+    this.logger.info('👥 Friends listed', {
+      count: friendships.length,
+      requestedBy: rateLimitKey
+    });
+    
+    return friendships;
   }
 
   /**
@@ -470,14 +474,20 @@ export class FriendshipService {
   }
 
   /**
-   * Delete friendship request(s) by ID or criteria
+   * Delete friendship request(s) by ID or criteria (with rate limiting)
    */
   async deleteFriendRequests(options: {
     requestId?: string;
     fromDomain?: string;
     status?: string;
     olderThanDays?: number;
-  }): Promise<{ deletedCount: number; message: string }> {
+  }, clientIP?: string): Promise<{ deletedCount: number; message: string }> {
+    
+    // Rate limiting
+    const rateLimitKey = clientIP || this.config.botDomain;
+    if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'deleteFriendRequests')) {
+      throw new Error('Rate limit exceeded for deleting friend requests. Please try again later.');
+    }
     let whereClause = '1=1';
     let params: any[] = [];
     
@@ -603,7 +613,7 @@ export class FriendshipService {
   async createIncomingFriendRequest(fromDomain: string, message?: string, clientIP?: string): Promise<{ bearerToken: string; status: string }> {
     // Rate limiting check
     const rateLimitKey = clientIP || fromDomain;
-    if (!this.checkRateLimit(rateLimitKey)) {
+    if (!this.rateLimiter.checkRateLimit(rateLimitKey, 'createFriendRequest')) {
       throw new Error('Rate limit exceeded. Please try again later.');
     }
 

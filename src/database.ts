@@ -178,6 +178,51 @@ async function runMigrations(db: Database.Database, logger: Logger): Promise<voi
         CREATE INDEX IF NOT EXISTS idx_challenges_expires_at ON domain_challenges(expires_at);
       `
     },
+    {
+      filename: "004_messaging_system.sql", 
+      sql: `
+        -- Add messaging system tables
+        
+        -- Messages table for inter-node communication
+        CREATE TABLE IF NOT EXISTS messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          message_id TEXT NOT NULL UNIQUE,
+          from_domain TEXT NOT NULL,
+          to_domain TEXT NOT NULL,
+          content TEXT NOT NULL,
+          message_type TEXT NOT NULL DEFAULT 'chat',
+          status TEXT NOT NULL DEFAULT 'pending', -- pending, delivered, read, responded
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          metadata JSON
+        );
+
+        -- Message responses table
+        CREATE TABLE IF NOT EXISTS message_responses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          response_id TEXT NOT NULL UNIQUE,
+          message_id TEXT NOT NULL,
+          from_domain TEXT NOT NULL,
+          response_content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          metadata JSON,
+          FOREIGN KEY (message_id) REFERENCES messages(message_id)
+        );
+
+        -- Create indexes for messaging
+        CREATE INDEX IF NOT EXISTS idx_messages_message_id ON messages(message_id);
+        CREATE INDEX IF NOT EXISTS idx_messages_from_domain ON messages(from_domain);
+        CREATE INDEX IF NOT EXISTS idx_messages_to_domain ON messages(to_domain);
+        CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status);
+        CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+        CREATE INDEX IF NOT EXISTS idx_messages_message_type ON messages(message_type);
+        
+        CREATE INDEX IF NOT EXISTS idx_responses_response_id ON message_responses(response_id);
+        CREATE INDEX IF NOT EXISTS idx_responses_message_id ON message_responses(message_id);
+        CREATE INDEX IF NOT EXISTS idx_responses_from_domain ON message_responses(from_domain);
+        CREATE INDEX IF NOT EXISTS idx_responses_created_at ON message_responses(created_at);
+      `
+    },
   ];
   
   // Apply migrations
