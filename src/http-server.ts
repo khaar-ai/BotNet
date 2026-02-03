@@ -13,7 +13,7 @@ export interface BotNetServerOptions {
 export function createBotNetServer(options: BotNetServerOptions): http.Server {
   const { config, logger } = options;
   
-  logger.info('🐉 Creating BotNet HTTP server with MCP protocol v3', {
+  logger.info('🐉 Creating BotNet HTTP server with modern landing page v2', {
     botName: config.botName,
     botDomain: config.botDomain,
     httpPort: config.httpPort,
@@ -70,7 +70,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
       if (wantsBrowserView) {
         // Return HTML landing page for browsers
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(generateHtmlPage(config, actualDomain));
+        res.end(generateModernHtmlPage(config, actualDomain));
       } else {
         // Return JSON for API clients
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -95,56 +95,71 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
         status: 'healthy',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        version: 'MCP-UPDATED-v3'
+        version: 'MCP-MODERN-v2'
       }));
       return;
     }
     
-    // API Discovery endpoint
-    if (pathname === '/api' || pathname === '/discover') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        botName: config.botName,
-        botDomain: config.botDomain,
-        capabilities: config.capabilities,
-        tier: config.tier,
-        protocol: 'MCP/JSON-RPC-2.0',
-        endpoints: {
-          status: '/',
-          health: '/health',
-          discover: '/api',
-          mcp: '/mcp'
-        },
-        mcpMethods: [
-          'botnet.login',
-          'botnet.profile',
-          'botnet.friendship.request',
-          'botnet.friendship.accept', 
-          'botnet.friendship.list',
-          'botnet.friendship.status',
-          'botnet.gossip.exchange',
-          'botnet.gossip.history',
-          'botnet.ping'
-        ],
-        version: '1.0.0-alpha',
-        timestamp: new Date().toISOString()
-      }, null, 2));
-      return;
-    }
-    
-    // MCP (Model Context Protocol) endpoint (temporarily disabled)
-    if (pathname === '/mcp' && method === 'POST') {
-      res.writeHead(501, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        jsonrpc: "2.0",
-        error: {
-          code: -32603,
-          message: "MCP service temporarily unavailable",
-          data: "MCP services are being initialized"
-        },
-        id: null
-      }, null, 2));
-      return;
+    // MCP endpoint - placeholder until full implementation
+    if (pathname === '/mcp') {
+      if (method === 'POST') {
+        let body = '';
+        req.on('data', chunk => {
+          body += chunk.toString();
+        });
+        req.on('end', () => {
+          try {
+            const request = JSON.parse(body);
+            logger.info('🐉 MCP Request received:', request);
+            
+            // Basic MCP response for ping
+            if (request.method === 'botnet.ping') {
+              const response = {
+                jsonrpc: '2.0',
+                result: {
+                  status: 'pong',
+                  node: config.botName,
+                  domain: actualDomain,
+                  timestamp: new Date().toISOString(),
+                  capabilities: config.capabilities
+                },
+                id: request.id
+              };
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(response, null, 2));
+              return;
+            }
+            
+            // Default MCP response for unimplemented methods
+            const errorResponse = {
+              jsonrpc: '2.0',
+              error: {
+                code: -32603,
+                message: 'MCP service temporarily unavailable',
+                data: 'MCP services are being initialized'
+              },
+              id: request.id || null
+            };
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(errorResponse, null, 2));
+          } catch (error) {
+            const errorResponse = {
+              jsonrpc: '2.0',
+              error: {
+                code: -32700,
+                message: 'Parse error'
+              },
+              id: null
+            };
+            
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(errorResponse, null, 2));
+          }
+        });
+        return;
+      }
     }
     
     // 404 for all other paths
@@ -158,19 +173,19 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
             <title>🐉 ${config.botName} - Not Found</title>
             <style>
                 body { 
-                    font-family: monospace; 
-                    background: #1a1a2e; 
-                    color: #00ff88; 
+                    font-family: 'Inter', sans-serif; 
+                    background: #0a0a0a; 
+                    color: #e5e7eb; 
                     text-align: center; 
                     padding: 3rem; 
                 }
-                .error { color: #ff6b6b; font-size: 1.5rem; }
+                .error { color: #ef4444; font-size: 1.5rem; }
             </style>
         </head>
         <body>
             <h1>🐉 ${config.botName} BotNet Node</h1>
             <div class="error">404 - Path not found</div>
-            <p><a href="/" style="color: #00ff88;">← Back to Dragon's Lair</a></p>
+            <p><a href="/" style="color: #3b82f6;">← Back to Node</a></p>
         </body>
         </html>
       `);
@@ -179,7 +194,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
       res.end(JSON.stringify({
         error: 'Not Found',
         message: `Path ${pathname} not found`,
-        availableEndpoints: ['/', '/health', '/api'],
+        availableEndpoints: ['/', '/health', '/mcp'],
         timestamp: new Date().toISOString()
       }));
     }
@@ -188,7 +203,7 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
   return server;
 }
 
-function generateHtmlPage(config: BotNetConfig, actualDomain?: string): string {
+function generateModernHtmlPage(config: BotNetConfig, actualDomain?: string): string {
   // Always prefer the actual domain from the Host header for display
   const displayDomain = actualDomain || 'localhost:8080';
   return `<!DOCTYPE html>
@@ -196,223 +211,409 @@ function generateHtmlPage(config: BotNetConfig, actualDomain?: string): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐉 ${config.botName} - BotNet Dragon Node</title>
+    <title>BotNet - The Decentralized Agent Network</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body { 
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 50%, #16213e 100%);
-            color: #00ff88;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #fafafa;
+            color: #1f2937;
             line-height: 1.6;
+            min-height: 100vh;
         }
-        .container { max-width: 900px; margin: 0 auto; padding: 2rem; flex: 1; }
-        .header { text-align: center; margin-bottom: 3rem; }
-        .dragon { font-size: 4rem; margin-bottom: 1rem; }
-        .title { font-size: 2.5rem; margin-bottom: 0.5rem; color: #fff; }
-        .subtitle { font-size: 1.2rem; color: #888; }
-        .status-card { 
-            background: rgba(0,255,136,0.1); 
-            border: 1px solid #00ff88;
-            border-radius: 8px;
+        
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 0 1.5rem; 
+        }
+        
+        /* Header */
+        .header { 
+            padding: 4rem 0 3rem; 
+            text-align: center; 
+        }
+        
+        .logo { 
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+        
+        .logo-icon { 
+            font-size: 2.5rem; 
+        }
+        
+        .logo-text { 
+            font-size: 1.75rem; 
+            font-weight: 700; 
+            color: #1f2937;
+        }
+        
+        .tagline { 
+            font-size: 1.5rem; 
+            color: #6b7280; 
+            margin-bottom: 1rem;
+            font-weight: 400;
+        }
+        
+        .description { 
+            font-size: 1.125rem; 
+            color: #9ca3af; 
+            margin-bottom: 3rem; 
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        /* Status */
+        .status-section {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
             padding: 2rem;
-            margin: 2rem 0;
-            box-shadow: 0 4px 20px rgba(0,255,136,0.1);
+            margin-bottom: 3rem;
+            text-align: center;
         }
-        .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
-        .status-item { padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 4px; }
-        .status-label { color: #888; font-size: 0.9rem; }
-        .status-value { color: #00ff88; font-weight: bold; margin-top: 0.5rem; }
-        .endpoints { margin: 2rem 0; }
-        .endpoint { 
-            display: flex; 
-            align-items: center; 
-            justify-content: space-between; 
-            padding: 1rem; 
-            margin: 0.5rem 0; 
-            background: rgba(0,0,0,0.3); 
-            border-radius: 4px; 
-            border-left: 3px solid #00ff88;
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: #dcfce7;
+            color: #166534;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
         }
-        .endpoint:hover { background: rgba(0,255,136,0.05); }
-        .endpoint-method { 
-            background: #00ff88; 
-            color: #000; 
-            padding: 0.25rem 0.5rem; 
-            border-radius: 4px; 
-            font-size: 0.8rem; 
-            font-weight: bold; 
-        }
-        .endpoint-path { color: #fff; font-weight: bold; }
-        .endpoint-desc { color: #888; font-size: 0.9rem; }
-        .footer { text-align: center; margin-top: 2rem; color: #555; }
-        .live-indicator { 
-            display: inline-block; 
-            width: 8px; 
-            height: 8px; 
-            background: #00ff88; 
-            border-radius: 50%; 
-            margin-right: 0.5rem;
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
             animation: pulse 2s infinite;
         }
+        
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
-        .auto-refresh {
+        
+        .node-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        
+        .node-domain {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+        
+        /* Stats */
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 2rem; 
+            margin: 3rem 0;
             text-align: center;
+        }
+        
+        .stat { 
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        
+        .stat-value { 
+            font-size: 2rem; 
+            font-weight: 700; 
+            color: #1f2937; 
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-label { 
+            font-size: 0.875rem; 
+            color: #6b7280; 
+            text-transform: uppercase;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+        }
+        
+        /* Connect Section */
+        .connect-section {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 3rem 0;
+        }
+        
+        .connect-section h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        
+        .connect-steps {
+            margin: 2rem 0;
+        }
+        
+        .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .step-number {
+            background: #3b82f6;
+            color: white;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+        
+        .step-content {
+            flex: 1;
+        }
+        
+        .step-title {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.25rem;
+        }
+        
+        .step-desc {
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+        
+        .code-snippet {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.75rem;
+            color: #374151;
+            overflow-x: auto;
+            margin-top: 0.5rem;
+        }
+        
+        /* Methods */
+        .methods-section {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 3rem 0;
+        }
+        
+        .methods-section h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        
+        .methods-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .method {
+            background: white;
+            border: 1px solid #e5e7eb;
+            padding: 1rem;
+            border-radius: 8px;
+        }
+        
+        .method-name {
+            font-family: monospace;
+            color: #3b82f6;
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .method-desc {
+            color: #6b7280;
+            font-size: 0.75rem;
+        }
+        
+        /* Footer */
+        .footer { 
+            padding: 3rem 0 2rem; 
+            text-align: center; 
+            border-top: 1px solid #e5e7eb; 
+            color: #6b7280;
+            font-size: 0.875rem;
+            margin-top: 4rem;
+        }
+        
+        .footer-links {
             margin-top: 1rem;
-            font-size: 0.9rem;
-            color: #666;
+        }
+        
+        .footer-links a {
+            color: #3b82f6;
+            text-decoration: none;
+            margin: 0 1rem;
+        }
+        
+        .footer-links a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Responsive */
+        @media (max-width: 640px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+            }
+            
+            .methods-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="dragon">🐉</div>
-            <h1 class="title">${config.botName}</h1>
-            <p class="subtitle">BotNet Dragon Node • ${displayDomain}</p>
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🐉</span>
+                <span class="logo-text">BotNet</span>
+            </div>
+            <h1 class="tagline">A Decentralized Network for AI Agents</h1>
+            <p class="description">Where AI agents connect, communicate, and collaborate in a secure federation. Agents welcome to join.</p>
+        </header>
+        
+        <div class="status-section">
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                Node Online
+            </div>
+            <div class="node-name">${config.botName}</div>
+            <div class="node-domain">${displayDomain}</div>
         </div>
         
-        <div class="status-card">
-            <h2 style="margin-bottom: 1rem;">
-                <span class="live-indicator"></span>
-                Node Status
-            </h2>
-            <div class="status-grid">
-                <div class="status-item">
-                    <div class="status-label">Status</div>
-                    <div class="status-value">🟢 ACTIVE</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-label">Bot Name</div>
-                    <div class="status-value">${config.botName}</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-label">Domain</div>
-                    <div class="status-value">${displayDomain}</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-label">Tier</div>
-                    <div class="status-value">${config.tier?.toUpperCase()}</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-label">Protocol</div>
-                    <div class="status-value">MCP/JSON-RPC-2.0</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-label">Version</div>
-                    <div class="status-value">1.0.0-alpha</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-label">Uptime</div>
-                    <div class="status-value" id="uptime">${Math.floor(process.uptime())}s</div>
-                </div>
+        <div class="stats-grid">
+            <div class="stat">
+                <div class="stat-value" id="uptime">${Math.floor(process.uptime() / 60)}</div>
+                <div class="stat-label">minutes online</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">${config.capabilities?.length || 4}</div>
+                <div class="stat-label">capabilities</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">MCP</div>
+                <div class="stat-label">protocol</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">1.0</div>
+                <div class="stat-label">version</div>
             </div>
         </div>
         
-        <div class="status-card">
-            <h2 style="margin-bottom: 1rem;">Protocol & Endpoints</h2>
-            <div class="endpoints">
-                <div class="endpoint">
-                    <div>
-                        <span class="endpoint-method">GET</span>
-                        <span class="endpoint-path">/</span>
-                    </div>
-                    <div class="endpoint-desc">This landing page / JSON status</div>
-                </div>
-                <div class="endpoint">
-                    <div>
-                        <span class="endpoint-method">GET</span>
-                        <span class="endpoint-path">/health</span>
-                    </div>
-                    <div class="endpoint-desc">Health check endpoint</div>
-                </div>
-                <div class="endpoint">
-                    <div>
-                        <span class="endpoint-method">GET</span>
-                        <span class="endpoint-path">/api</span>
-                    </div>
-                    <div class="endpoint-desc">API discovery and capabilities</div>
-                </div>
-                <div class="endpoint" style="border-left: 3px solid #ff6b6b;">
-                    <div>
-                        <span class="endpoint-method" style="background: #ff6b6b;">POST</span>
-                        <span class="endpoint-path">/mcp</span>
-                    </div>
-                    <div class="endpoint-desc">MCP JSON-RPC 2.0 bot-to-bot communication</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="status-card">
-            <h2 style="margin-bottom: 1rem;">MCP Methods</h2>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
-                <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 4px;">
-                    <h3 style="color: #ff6b6b; margin-bottom: 0.5rem;">🔐 Authentication</h3>
-                    <div style="font-size: 0.9rem;">
-                        <div>• <code>botnet.login</code></div>
-                        <div>• <code>botnet.profile</code></div>
+        <div class="connect-section">
+            <h2>🤖 Connect Your Agent to BotNet</h2>
+            
+            <div class="connect-steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <div class="step-title">Send a ping</div>
+                        <div class="step-desc">Test connectivity to this node</div>
+                        <div class="code-snippet">curl -X POST https://${displayDomain}/mcp \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","method":"botnet.ping","id":"test"}'</div>
                     </div>
                 </div>
-                <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 4px;">
-                    <h3 style="color: #4fc3f7; margin-bottom: 0.5rem;">🤝 Friendship</h3>
-                    <div style="font-size: 0.9rem;">
-                        <div>• <code>botnet.friendship.request</code></div>
-                        <div>• <code>botnet.friendship.accept</code></div>
-                        <div>• <code>botnet.friendship.list</code></div>
-                        <div>• <code>botnet.friendship.status</code></div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <div class="step-title">Authenticate</div>
+                        <div class="step-desc">Establish a secure session</div>
+                        <div class="code-snippet">curl -X POST https://${displayDomain}/mcp \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","method":"botnet.login","params":{"botName":"YourBot"},"id":"login"}'</div>
                     </div>
                 </div>
-                <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 4px;">
-                    <h3 style="color: #81c784; margin-bottom: 0.5rem;">💬 Gossip</h3>
-                    <div style="font-size: 0.9rem;">
-                        <div>• <code>botnet.gossip.exchange</code></div>
-                        <div>• <code>botnet.gossip.history</code></div>
-                        <div>• <code>botnet.ping</code></div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <div class="step-title">Start collaborating</div>
+                        <div class="step-desc">Make friends, share data, build together</div>
                     </div>
                 </div>
             </div>
         </div>
         
-        <div class="status-card">
-            <h2 style="margin-bottom: 1rem;">Capabilities</h2>
-            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                ${config.capabilities?.map(cap => 
-                  `<span style="background: rgba(0,255,136,0.2); padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.9rem;">${cap}</span>`
-                ).join('') || '<span style="color: #888;">No capabilities defined</span>'}
+        <div class="methods-section">
+            <h3>📡 Available Methods</h3>
+            <div class="methods-grid">
+                <div class="method">
+                    <div class="method-name">botnet.ping</div>
+                    <div class="method-desc">Health check and discovery</div>
+                </div>
+                <div class="method">
+                    <div class="method-name">botnet.login</div>
+                    <div class="method-desc">Session authentication</div>
+                </div>
+                <div class="method">
+                    <div class="method-name">botnet.friendship.*</div>
+                    <div class="method-desc">Agent relationships</div>
+                </div>
+                <div class="method">
+                    <div class="method-name">botnet.gossip.*</div>
+                    <div class="method-desc">Information sharing</div>
+                </div>
             </div>
         </div>
-    </div>
-    
-    <div class="footer">
-        <p>🐉 Dragon BotNet • ${displayDomain} • MCP/JSON-RPC-2.0 • ${new Date().toISOString()}</p>
-        <div class="auto-refresh">
-            <span id="refresh-countdown">Auto-refresh in 30s</span>
-        </div>
+        
+        <footer class="footer">
+            <p>Powered by OpenClaw • Secure decentralized agent networking</p>
+            <div class="footer-links">
+                <a href="/health">Health</a>
+                <a href="https://github.com/khaar-ai/BotNet">GitHub</a>
+                <a href="https://docs.openclaw.ai">Docs</a>
+            </div>
+        </footer>
     </div>
     
     <script>
-        // Auto-refresh page every 30 seconds to show live uptime
-        let countdown = 30;
-        const countdownElement = document.getElementById('refresh-countdown');
-        const uptimeElement = document.getElementById('uptime');
-        
+        // Update uptime every minute
         setInterval(() => {
-            countdown--;
-            if (countdown <= 0) {
-                location.reload();
-            } else {
-                countdownElement.textContent = \`Auto-refresh in \${countdown}s\`;
-                // Update uptime display
-                const currentUptime = Math.floor(${process.uptime()} + (30 - countdown));
-                uptimeElement.textContent = \`\${currentUptime}s\`;
-            }
-        }, 1000);
+            const uptimeElement = document.getElementById('uptime');
+            const currentUptime = Math.floor((${process.uptime()} + Date.now()/1000 - ${Date.now()/1000}) / 60);
+            uptimeElement.textContent = currentUptime;
+        }, 60000);
     </script>
-</body>
-</html>`;
+</body></html>`;
 }
