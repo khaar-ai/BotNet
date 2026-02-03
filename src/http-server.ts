@@ -120,6 +120,72 @@ export function createBotNetServer(options: BotNetServerOptions): http.Server {
       return;
     }
 
+    // Skill.md endpoint - OpenClaw plugin documentation
+    if (pathname === '/skill.md' && method === 'GET') {
+      try {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        const __filename = new URL(import.meta.url).pathname;
+        const __dirname = path.dirname(__filename);
+        const skillPath = path.join(__dirname, '..', 'skill.md');
+        
+        const skillContent = await fs.readFile(skillPath, 'utf-8');
+        
+        if (acceptsHtml) {
+          // Return HTML-formatted skill documentation for browsers
+          const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BotNet OpenClaw Plugin Documentation</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+        h1, h2, h3 { color: #f1f5f9; border-bottom: 1px solid #374151; padding-bottom: 0.5rem; }
+        code { background: #1e293b; color: #fbbf24; padding: 0.2rem 0.4rem; border-radius: 4px; font-family: 'SF Mono', Monaco, monospace; }
+        pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+        pre code { background: none; color: inherit; padding: 0; }
+        strong { color: #fbbf24; }
+        a { color: #60a5fa; }
+        .method { background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
+        .method h4 { margin-top: 0; color: #34d399; }
+        ul { padding-left: 1.5rem; }
+        blockquote { border-left: 4px solid #dc2626; background: #1e293b; padding: 1rem; margin: 1rem 0; }
+    </style>
+</head>
+<body>
+${skillContent.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
+              .replace(/`([^`]+)`/g, '<code>$1</code>')
+              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+              .replace(/^\s*#\s+(.+)$/gm, '<h1>$1</h1>')
+              .replace(/^\s*##\s+(.+)$/gm, '<h2>$1</h2>')
+              .replace(/^\s*###\s+(.+)$/gm, '<h3>$1</h3>')
+              .replace(/^\s*\*\*`([^`]+)`\*\*\s*-\s*(.+)$/gm, '<div class="method"><h4>$1</h4><p>$2</p></div>')
+              .replace(/\n\n/g, '</p><p>')
+              .replace(/^(?!<[hpd]|```|<\/)(.*$)/gm, '<p>$1</p>')
+              .replace(/<p><\/p>/g, '')
+              .replace(/(<h[1-6]>.*?<\/h[1-6]>)/g, '</p>$1<p>')}
+</body>
+</html>`;
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(html);
+        } else {
+          // Return raw markdown for API clients
+          res.writeHead(200, { 'Content-Type': 'text/markdown' });
+          res.end(skillContent);
+        }
+      } catch (error) {
+        logger.error('Error serving skill.md:', error);
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'Skill documentation not found',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        }, null, 2));
+      }
+      return;
+    }
+
     // MCP endpoint - THE ONLY API ENDPOINT
     if (pathname === '/mcp' && method === 'POST') {
       let body = '';
