@@ -13,7 +13,7 @@ export const methodAuthLevels: Record<string, AuthLevel> = {
   // ===== STANDARD MCP PROTOCOL METHODS (Public - no auth required) =====
   'initialize': AuthLevel.NONE,
   'tools/list': AuthLevel.NONE,
-  'tools/call': AuthLevel.NONE,
+  'tools/call': AuthLevel.SESSION,
   'resources/list': AuthLevel.NONE,
   'resources/read': AuthLevel.NONE,
 

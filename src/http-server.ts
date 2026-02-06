@@ -189,12 +189,27 @@ ${skillContent.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$
     // MCP endpoint - THE ONLY API ENDPOINT
     if (pathname === '/mcp' && method === 'POST') {
       let body = '';
-      
+      const MAX_BODY_SIZE = 1024 * 1024; // 1 MB
+      let bodyLimitExceeded = false;
+
       req.on('data', chunk => {
         body += chunk.toString();
+        if (body.length > MAX_BODY_SIZE) {
+          bodyLimitExceeded = true;
+          req.destroy();
+        }
       });
-      
+
       req.on('end', async () => {
+        if (bodyLimitExceeded) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            jsonrpc: '2.0',
+            error: { code: -32600, message: 'Request body too large (max 1 MB)' },
+            id: null
+          }));
+          return;
+        }
         try {
           const request = JSON.parse(body);
           logger.info('🤖 MCP Request received:', { 

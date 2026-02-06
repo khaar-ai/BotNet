@@ -1,6 +1,7 @@
 // BotNet Friendship Service
 // Manages bot-to-bot relationships and connections
 
+import { randomBytes } from "crypto";
 import type Database from "better-sqlite3";
 import type { BotNetConfig } from "../../index.js";
 import { RateLimiter } from "../rate-limiter.js";
@@ -75,9 +76,7 @@ export class FriendshipService {
    * Generate bearer token for friendship request
    */
   private generateBearerToken(): string {
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2);
-    return `bot_${timestamp}_${random}`;
+    return `bot_${randomBytes(32).toString('hex')}`;
   }
 
   /**
@@ -407,8 +406,8 @@ export class FriendshipService {
     }
     
     // Generate challenge
-    const challengeId = `challenge_${Date.now()}_${Math.random().toString(36).substring(2)}`;
-    const challengeToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const challengeId = `challenge_${randomBytes(16).toString('hex')}`;
+    const challengeToken = randomBytes(32).toString('hex');
     
     // Update friendship status to challenging
     const updatedMetadata = {

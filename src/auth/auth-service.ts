@@ -31,10 +31,7 @@ export class AuthService {
 
   constructor(logger: AuthService['logger']) {
     this.logger = logger;
-    
-    // Initialize with some default friend passwords for testing
-    this.initializeDefaultPasswords();
-    
+
     // Clean up expired sessions every 15 minutes
     setInterval(() => this.cleanupExpiredSessions(), 15 * 60 * 1000);
   }
@@ -210,27 +207,4 @@ export class AuthService {
     }
   }
 
-  private initializeDefaultPasswords(): void {
-    // Initialize some default friend passwords for testing
-    // In production, these would be generated and shared securely
-    
-    const testBots = [
-      'Khaar',
-      'TestBot1',
-      'TestBot2'
-    ];
-
-    for (const botName of testBots) {
-      const password = this.generateFriendPassword(botName);
-      this.logger.info(`🐉 Auth: Initialized test bot`, { 
-        botName, 
-        password: password.substring(0, 12) + '...' 
-      });
-    }
-
-    // Special development password for easy testing
-    this.friendPasswords.set('Khaar', 'dragon-test-password-2026');
-    
-    this.logger.info('🐉 Auth: Default passwords initialized');
-  }
 }
